@@ -54,12 +54,12 @@ def test_render_without_provider_falls_back_to_board(tmp_path):
 
 
 def test_render_uses_provider_when_it_works(tmp_path):
-    produced = tmp_path / "photo.png"
-    Image.new("RGB", (10, 10)).save(produced)
+    png = b"\x89PNG\r\n\x1a\n" + b"fake-body"
 
-    result = render([_g()], tmp_path, provider=lambda items: produced)
+    result = render([_g()], tmp_path, provider=lambda items: png)
     assert result.mode == "photo"
-    assert result.path == produced
+    assert result.path is not None and result.path.suffix == ".png"
+    assert result.path.read_bytes() == png
 
 
 def test_render_falls_back_when_provider_raises(tmp_path):

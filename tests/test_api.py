@@ -191,6 +191,56 @@ def test_set_city_reports_unknown_place(client, monkeypatch):
     assert response.status_code == 404
 
 
+def test_autotag_returns_suggestions(client, monkeypatch):
+    from outfit.clients import tokenhub
+
+    monkeypatch.setattr("outfit.wardrobe.cutout_available", lambda: False)
+    monkeypatch.setattr(
+        tokenhub.TokenHub,
+        "tag_garment",
+        lambda self, data, *args, **kwargs: tokenhub.Tags(
+            category="outerwear",
+            color_name="驼",
+            warmth=5,
+            formality=4,
+            material="羊毛",
+            confidence=0.9,
+        ),
+    )
+
+    uploaded = client.post(
+        "/api/upload", files={"file": ("coat.jpg", _jpeg_bytes(), "image/jpeg")}
+    ).json()
+    body = client.post("/api/garments/autotag", json={"image_path": uploaded["path"]}).json()
+    assert body["category"] == "outerwear"
+    assert body["warmth"] == 5
+    assert body["confidence"] == pytest.approx(0.9)
+
+
+def test_autotag_reports_model_failure(client, monkeypatch):
+    from outfit.clients import tokenhub
+
+    monkeypatch.setattr("outfit.wardrobe.cutout_available", lambda: False)
+    monkeypatch.setattr(
+        tokenhub.TokenHub,
+        "tag_garment",
+        lambda self, data, *args, **kwargs: (_ for _ in ()).throw(
+            tokenhub.TokenHubError("API Key 配额已用完")
+        ),
+    )
+
+    uploaded = client.post(
+        "/api/upload", files={"file": ("coat.jpg", _jpeg_bytes(), "image/jpeg")}
+    ).json()
+    response = client.post("/api/garments/autotag", json={"image_path": uploaded["path"]})
+    assert response.status_code == 502
+    assert "配额" in response.json()["detail"]
+
+
+def test_autotag_missing_photo_is_404(client):
+    assert client.post("/api/garments/autotag", json={"image_path": "photos/nope.jpg"}).status_code == 404
+
+
 def test_render_produces_a_board(client):
     top = _add(client, name="白衬衫", category="top")
     bottom = _add(client, name="黑西裤", category="bottom", color_primary="黑", color_hex="#1A1A1A")

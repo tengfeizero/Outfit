@@ -34,6 +34,7 @@ export const api = {
 
   garments: (status = "active") => request(`/api/garments?status=${status}`),
   createGarment: (payload) => jsonPost("/api/garments", payload),
+  autotag: (image_path) => jsonPost("/api/garments/autotag", { image_path }),
   patchGarment: (id, payload) =>
     request(`/api/garments/${id}`, {
       method: "PATCH",

@@ -29,6 +29,8 @@ export default function Profile({ status }) {
   const [city, setCity] = useState("");
   const [cityMessage, setCityMessage] = useState("");
   const [savingCity, setSavingCity] = useState(false);
+  const [bodyPreview, setBodyPreview] = useState(null);
+  const [uploadingBody, setUploadingBody] = useState(false);
 
   const load = async () => {
     try {
@@ -41,6 +43,7 @@ export default function Profile({ status }) {
           ),
         });
         setReport(body.report);
+        if (body.profile.photo_full) setBodyPreview(`/media/${body.profile.photo_full}`);
       }
     } catch (loadError) {
       setError(loadError.message);
@@ -56,6 +59,23 @@ export default function Profile({ status }) {
       })
       .catch(() => {});
   }, []);
+
+  const pickBody = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploadingBody(true);
+    setError("");
+    try {
+      const result = await api.upload(file);
+      update({ photo_full: result.path });
+      setBodyPreview(result.url);
+      setMessage("照片已上传，点下面的「保存」才会生效。");
+    } catch (uploadError) {
+      setError(uploadError.message);
+    } finally {
+      setUploadingBody(false);
+    }
+  };
 
   const saveCity = async () => {
     const name = city.trim();
@@ -94,6 +114,7 @@ export default function Profile({ status }) {
         shoulder_cm: number(form.shoulder_cm),
         inseam_cm: number(form.inseam_cm),
         skin_tone: form.skin_tone,
+        photo_full: form.photo_full || null,
       });
       setMessage("存好了。");
       await load();
@@ -236,7 +257,24 @@ export default function Profile({ status }) {
       ) : null}
 
       <section className="card p-5">
-        <p className="text-xs uppercase tracking-[0.2em] text-muted">身体照片怎么拍</p>
+        <p className="text-xs uppercase tracking-[0.2em] text-muted">身体照片</p>
+        <p className="mt-2 text-xs leading-relaxed text-muted">
+          出试穿图要用它。不传也能用——只是看不到"你穿着这套"的样子。
+        </p>
+
+        <label className="mt-3 block">
+          <div className="flex h-56 items-center justify-center overflow-hidden rounded-xl border border-edge bg-ink">
+            {bodyPreview ? (
+              <img src={bodyPreview} alt="身体照片" className="h-full w-full object-contain" />
+            ) : (
+              <span className="text-sm text-muted">
+                {uploadingBody ? "上传中……" : "点这里选一张全身照"}
+              </span>
+            )}
+          </div>
+          <input type="file" accept="image/*" className="sr-only" onChange={pickBody} />
+        </label>
+
         <ul className="mt-3 space-y-2 text-sm leading-relaxed text-muted">
           <li>· 白墙前，正对窗，不要逆光也不要开美颜</li>
           <li>· 手机架在胸口高度，拍全身，脚背要拍到</li>
@@ -244,7 +282,7 @@ export default function Profile({ status }) {
           <li>· 一张就够，比多拍十张有用的是把三围量准</li>
         </ul>
         <p className="mt-3 text-[11px] leading-relaxed text-muted/70">
-          不建议拍裸照：多数图像模型对裸露图像有安全过滤会直接拒图，贴身衣物反而更容易看出肩线和腿长，而且泄露代价完全不同。照片上传功能在 M2 接入。
+          不建议拍裸照：多数图像模型对裸露图像有安全过滤会直接拒图，贴身衣物反而更容易看出肩线和腿长，而且泄露代价完全不同。
         </p>
       </section>
     </div>

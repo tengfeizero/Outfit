@@ -34,6 +34,7 @@ export default function AddItem({ onAdded, onGo }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [savedCount, setSavedCount] = useState(0);
+  const [tagging, setTagging] = useState(false);
 
   const update = (patch) => setForm((value) => ({ ...value, ...patch }));
 
@@ -42,6 +43,7 @@ export default function AddItem({ onAdded, onGo }) {
     if (!file) return;
     setUploading(true);
     setError("");
+    setNotice("");
     try {
       const result = await api.upload(file);
       // 主色是本地算出来的，直接填进去，省掉"选颜色"这一步
@@ -53,7 +55,27 @@ export default function AddItem({ onAdded, onGo }) {
         name: value.name || `${result.color_name}${CATEGORY_LABEL[value.category] || "单品"}`,
       }));
       setPreview(result.cutout_url || result.url);
-      setNotice(result.notice || "");
+      if (result.notice) setNotice(result.notice);
+
+      // 装了模型就让模型认品类和厚薄，认不出来也不打扰
+      setTagging(true);
+      try {
+        const tags = await api.autotag(result.path);
+        setForm((value) => ({
+          ...value,
+          category: tags.category || value.category,
+          color_primary: tags.color_name || value.color_primary,
+          warmth: tags.warmth ?? value.warmth,
+          formality: tags.formality ?? value.formality,
+          material: tags.material || value.material,
+          name: `${tags.color_name || value.color_primary}${CATEGORY_LABEL[tags.category] || "单品"}`,
+        }));
+        setNotice(`认出来了：${CATEGORY_LABEL[tags.category] || tags.category}，确认一下就行。`);
+      } catch {
+        // 没有配额或没配 key：保持手动填写，不报错
+      } finally {
+        setTagging(false);
+      }
     } catch (uploadError) {
       setError(uploadError.message);
     } finally {
@@ -104,7 +126,9 @@ export default function AddItem({ onAdded, onGo }) {
           {preview ? (
             <img src={preview} alt="预览" className="h-full w-full object-cover" />
           ) : (
-            <span className="text-sm text-muted">{uploading ? "上传中……" : "点这里选一张"}</span>
+            <span className="text-sm text-muted">
+              {uploading ? "上传中……" : tagging ? "在认这件衣服……" : "点这里选一张"}
+            </span>
           )}
         </div>
         <input type="file" accept="image/*" className="sr-only" onChange={pickFile} />

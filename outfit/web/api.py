@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from .. import capture, db, profiler, rules, shopping, wardrobe
 from ..clients import weather as weather_client
+from ..clients.tokenhub import TokenHub, TokenHubError
 from ..config import Settings, load
 from ..models import BodyProfile, Garment, Outfit
 from ..renderer import render as render_plan
@@ -165,11 +166,18 @@ class ProfilePayload(BaseModel):
     shoulder_cm: float | None = None
     inseam_cm: float | None = None
     skin_tone: str | None = None
+    photo_full: str | None = None
+    photo_upper: str | None = None
+
+
+class AutoTagPayload(BaseModel):
+    image_path: str
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load()
     db.init_engine(settings.db_path)
+    hub = TokenHub(settings.tokenhub_key, settings.tokenhub_base)
 
     app = FastAPI(title="本地穿搭助手", version="0.1.0")
     app.mount("/media", StaticFiles(directory=str(settings.data_dir)), name="media")
@@ -185,6 +193,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "active": len([g for g in garments if g.status == "active"]),
             "has_profile": profile is not None,
             "offline": not settings.has_image_key,
+            "auto_tag": hub.available,
             "daily_render_limit": settings.daily_render_limit,
         }
 
@@ -206,6 +215,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "shoulder_cm": profile.shoulder_cm,
                 "inseam_cm": profile.inseam_cm,
                 "skin_tone": profile.skin_tone,
+                "photo_full": profile.photo_full,
+                "photo_upper": profile.photo_upper,
             },
             "report": {
                 "bmi": report.bmi,
@@ -240,6 +251,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(400, "正式度必须在 1–5 之间")
         saved = db.add_garment(Garment(**payload.model_dump()))
         return _garment_dict(saved)
+
+    @app.post("/api/garments/autotag")
+    def autotag(payload: AutoTagPayload) -> dict:
+        """让视觉模型认一遍照片，返回建议的标签。只给建议，不落库。"""
+        path = settings.data_dir / payload.image_path
+        if not path.exists():
+            raise HTTPException(404, "找不到这张照片")
+        try:
+            tags = hub.tag_garment(path.read_bytes())
+        except TokenHubError as error:
+            raise HTTPException(502, str(error)) from error
+        return tags.to_dict()
 
     @app.patch("/api/garments/{garment_id}")
     def patch_garment(garment_id: int, payload: dict) -> dict:
@@ -456,12 +479,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not items:
             raise HTTPException(400, "这套里没有有效的单品")
 
+        def provider(garments: list[Garment]) -> bytes:
+            """把人和衣服交给混元。任何一步不齐都抛错，由 renderer 降级。"""
+            profile = db.get_profile()
+            if profile is None or not profile.photo_full:
+                raise RuntimeError("还没传身体照片，去「我的」传一张全身照")
+            body_path = settings.data_dir / profile.photo_full
+            if not body_path.exists():
+                raise RuntimeError("身体照片找不到了，重新传一张")
+
+            references: list[bytes] = []
+            for garment in garments:
+                relative = garment.cutout_path or garment.image_path
+                if not relative:
+                    continue
+                path = settings.data_dir / relative
+                if path.exists():
+                    references.append(path.read_bytes())
+            if not references:
+                raise RuntimeError("这套里的衣服都还没有照片")
+
+            description = "、".join(garment.name for garment in garments[:4])
+            return hub.try_on(body_path.read_bytes(), references, description=description)
+
         result = render_plan(
             items,
             settings.render_dir,
             title=payload.title,
             subtitle=payload.subtitle,
             rationale=payload.rationale,
+            provider=provider if hub.available else None,
         )
         db.log_event(f"render_{result.mode}", str(payload.garment_ids))
 

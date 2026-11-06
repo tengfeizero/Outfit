@@ -49,6 +49,20 @@
 
 第一次启动 Windows 会问防火墙，**勾「专用网络」再允许**，否则手机连不进来。
 
+## 接入模型（可选）
+
+不配也能用，只是少了"自动认衣服"和"试穿效果图"。
+
+1. 去 [TokenHub 控制台](https://console.cloud.tencent.com/tokenhub/apikey) 拿一个 API Key。
+2. 在控制台的在线推理里给 `hy-vision-2.0-instruct`（认衣服）和 `hy-image-v3.5-preview`（出图）**开启后付费**。只拿 key 不开后付费，调用会返回 `quota exhausted`。
+3. 把 key 写进 `.env`：
+
+```
+TOKENHUB_API_KEY=sk-...
+```
+
+打标用的是 `hy-vision-2.0-instruct`，出图用的是 `hy-image-v3.5-preview`。两者都在 `outfit/clients/tokenhub.py` 一个文件里，换供应商只改这个文件。
+
 ## 改前端
 
 ```bat

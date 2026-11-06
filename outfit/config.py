@@ -63,12 +63,20 @@ class Settings:
         return self.root / "outfit" / "web" / "static"
 
     @property
+    def tokenhub_key(self) -> str | None:
+        return self.env.get("TOKENHUB_API_KEY") or None
+
+    @property
+    def tokenhub_base(self) -> str:
+        return self.env.get("TOKENHUB_BASE", "https://tokenhub.tencentmaas.com")
+
+    @property
     def has_image_key(self) -> bool:
-        return bool(self.env.get("IMAGE_API_KEY"))
+        return bool(self.tokenhub_key or self.env.get("IMAGE_API_KEY"))
 
     @property
     def has_llm_key(self) -> bool:
-        return bool(self.env.get("LLM_API_KEY"))
+        return bool(self.tokenhub_key or self.env.get("LLM_API_KEY"))
 
     def ensure_dirs(self) -> None:
         for directory in (self.data_dir, self.photo_dir, self.cutout_dir, self.render_dir):
