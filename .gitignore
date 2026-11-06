@@ -1,0 +1,14 @@
+# 依赖与构建
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+web/dist/
+
+# 本机数据：照片、数据库、密钥
+data/
+.env
+
+# 系统
+Thumbs.db
+.DS_Store
