@@ -47,7 +47,7 @@ export default function App() {
   }, [refresh]);
 
   return (
-    <div className="min-h-full bg-ink">
+    <div className="min-h-full overflow-x-hidden bg-ink">
       <main className="mx-auto w-full max-w-md px-5 pb-28 pt-8">
         {offline ? (
           <div className="card p-4 text-sm text-muted">

@@ -156,3 +156,7 @@ def test_javascript_is_served_as_javascript(tmp_path):
     index = client.get("/")
     assert index.status_code == 200
     assert "root" in index.text
+    # 页面必须每次回源，否则改版后旧页面指向已删除的文件，又变黑屏
+    assert index.headers["cache-control"] == "no-cache"
+    # 带哈希的资源可以永久缓存
+    assert js.headers["cache-control"].startswith("public")

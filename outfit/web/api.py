@@ -44,6 +44,26 @@ def fix_mimetypes() -> None:
 
 fix_mimetypes()
 
+
+class StaticBundle(StaticFiles):
+    """带缓存策略的静态文件服务。
+
+    - index.html 每次都要回来问一句（no-cache）。否则改了版、旧页面还指着已经删掉的
+      旧文件名，浏览器就会给你一片黑。
+    - 带哈希的 assets 可以永久缓存，文件名一变自然就换新的。
+    """
+
+    async def get_response(self, path: str, scope):  # type: ignore[override]
+        response = await super().get_response(path, scope)
+        # Windows 上这里拿到的是反斜杠路径，先归一化再判断
+        normalized = path.replace("\\", "/")
+        if normalized.endswith(".html") or normalized in ("", "."):
+            response.headers["Cache-Control"] = "no-cache"
+        elif "assets/" in normalized:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 OCCASION_LABELS_FOR_UI = [
     {"key": "interview", "label": "面试"},
     {"key": "work", "label": "上班"},
@@ -316,6 +336,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # 静态前端放在最后挂载：挂在 "/" 会把 /api 和 /media 一起吞掉
     if settings.dist_dir.exists():
-        app.mount("/", StaticFiles(directory=str(settings.dist_dir), html=True), name="ui")
+        app.mount("/", StaticBundle(directory=str(settings.dist_dir), html=True), name="ui")
 
     return app
