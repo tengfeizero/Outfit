@@ -135,7 +135,10 @@ def _jpeg_bytes(color=(31, 42, 68), background=(255, 255, 255)) -> bytes:
     return buffer.getvalue()
 
 
-def test_upload_saves_photo_and_guesses_color(client, tmp_path):
+def test_upload_saves_photo_and_guesses_color(client, tmp_path, monkeypatch):
+    # 抠图要加载 170MB 模型，测试里一律关掉；抠图本身另有专门的测试
+    monkeypatch.setattr("outfit.wardrobe.cutout_available", lambda: False)
+
     response = client.post(
         "/api/upload", files={"file": ("shirt.jpg", _jpeg_bytes(), "image/jpeg")}
     )
@@ -145,9 +148,8 @@ def test_upload_saves_photo_and_guesses_color(client, tmp_path):
     assert (tmp_path / "data" / body["path"]).exists()
     assert body["color_hex"].startswith("#")
     assert body["color_name"]
-    # 没装 rembg 时不该报错，只给一句说明
-    if body["cutout_path"] is None:
-        assert body["notice"]
+    assert body["cutout_path"] is None
+    assert "rembg" in body["notice"]
 
 
 def test_upload_rejects_broken_image(client):

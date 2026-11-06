@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -67,11 +68,28 @@ def test_guess_name_reads_naturally():
     assert wardrobe.guess_name("unknown", "灰") == "灰单品"
 
 
-def test_ingest_without_rembg_still_returns_color(tmp_path):
+def test_ingest_without_rembg_still_returns_color(tmp_path, monkeypatch):
+    monkeypatch.setattr(wardrobe, "cutout_available", lambda: False)
     path = _make_image(tmp_path / "item.jpg", (31, 42, 68), background=(255, 255, 255))
     result = wardrobe.ingest(path, tmp_path / "cutouts")
     assert result.color_hex.startswith("#")
     assert result.color_name
-    if not wardrobe.cutout_available():
-        assert result.cutout_path is None
-        assert result.cutout_skipped_reason
+    assert result.cutout_path is None
+    assert "rembg" in result.cutout_skipped_reason
+
+
+def test_cutout_failure_carries_the_real_reason(tmp_path, monkeypatch):
+    """失败原因不能被一句"未安装"盖掉——用户得知道是网络还是磁盘。"""
+
+    class BrokenRembg:
+        @staticmethod
+        def remove(_data):
+            raise RuntimeError("模型下载被墙")
+
+    monkeypatch.setattr(wardrobe, "cutout_available", lambda: True)
+    monkeypatch.setitem(sys.modules, "rembg", BrokenRembg())
+
+    path = _make_image(tmp_path / "item.jpg", (31, 42, 68))
+    result = wardrobe.ingest(path, tmp_path / "cutouts", tmp_path / "models")
+    assert result.cutout_path is None
+    assert "模型下载被墙" in result.cutout_skipped_reason

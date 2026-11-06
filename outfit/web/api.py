@@ -266,7 +266,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             target.unlink(missing_ok=True)
             raise HTTPException(400, f"这张图打不开：{error}") from error
 
-        result = wardrobe.ingest(target, settings.cutout_dir)
+        result = wardrobe.ingest(target, settings.cutout_dir, settings.model_dir)
         cutout_rel = None
         if result.cutout_path:
             cutout_rel = f"cutouts/{Path(result.cutout_path).name}"

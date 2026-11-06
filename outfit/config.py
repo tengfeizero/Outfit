@@ -54,6 +54,11 @@ class Settings:
         return self.data_dir / "renders"
 
     @property
+    def model_dir(self) -> Path:
+        """抠图模型放这里，跟数据放一起，不散落到用户目录。"""
+        return self.data_dir / "models"
+
+    @property
     def dist_dir(self) -> Path:
         return self.root / "outfit" / "web" / "static"
 
