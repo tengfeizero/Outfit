@@ -114,7 +114,7 @@ function PlanCard({ plan, index, onSaved, onWorn }) {
         </button>
         <div className="mt-2 flex gap-2">
           <button className="btn-ghost flex-1" onClick={save} disabled={busy || savedId}>
-            {savedId ? "已收藏" : "收藏"}
+            {savedId ? "已记住" : "收藏"}
           </button>
           <button className="btn-ghost flex-1" onClick={wear} disabled={busy}>
             今天就穿这套

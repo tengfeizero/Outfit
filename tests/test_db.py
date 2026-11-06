@@ -88,6 +88,14 @@ def test_recent_outfit_sets_returns_ids():
     assert {4, 5} in sets
 
 
+def test_saved_outfit_sets_only_returns_saved():
+    db.save_outfit(Outfit(occasion="work", garment_ids=[1, 2, 3], is_saved=True))
+    db.save_outfit(Outfit(occasion="date", garment_ids=[4, 5], is_saved=False))
+
+    saved = db.saved_outfit_sets()
+    assert saved == [[1, 2, 3]], "只收藏过一套，就只该返回这一套"
+
+
 def test_event_counter_is_per_day():
     db.log_event("render_ok")
     db.log_event("render_ok")

@@ -118,6 +118,7 @@ def build_plans(
     temp_c: float,
     profile: BodyProfile | None = None,
     recent_outfit_ids: list[set[int]] | None = None,
+    preference: scoring.Preference | None = None,
     limit: int = 3,
     now: datetime | None = None,
 ) -> tuple[list[Plan], candidates.Pool]:
@@ -135,6 +136,7 @@ def build_plans(
         formality_range=pool.formality,
         skin_tone=profile.skin_tone if profile else None,
         recent_outfit_ids=recent_outfit_ids or [],
+        preference=preference,
         now=now,
     )
 

@@ -154,6 +154,18 @@ def recent_outfit_sets(limit: int = 3) -> list[set[int]]:
     return [{int(i) for i in row.garment_ids} for row in rows if row.garment_ids]
 
 
+def saved_outfit_sets(limit: int = 50) -> list[list[int]]:
+    """收藏过的方案。这是"你喜欢什么"唯一的一手证据——比穿着次数诚实。"""
+    with session() as s:
+        rows = s.exec(
+            select(Outfit)
+            .where(Outfit.is_saved.is_(True))
+            .order_by(Outfit.created_at.desc())
+            .limit(limit)
+        ).all()
+    return [[int(i) for i in row.garment_ids] for row in rows if row.garment_ids]
+
+
 # ---------------------------------------------------------------- 设置
 
 

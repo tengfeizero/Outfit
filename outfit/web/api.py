@@ -16,7 +16,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .. import capture, db, profiler, rules, shopping, wardrobe
+from .. import capture, db, profiler, rules, scoring, shopping, wardrobe
 from ..clients import weather as weather_client
 from ..clients.tokenhub import TokenHub, TokenHubError
 from ..config import Settings, load
@@ -414,6 +414,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             temp_c=request.temp_c,
             profile=profile,
             recent_outfit_ids=recent,
+            preference=scoring.Preference.from_saved(db.saved_outfit_sets()),
         )
 
         band = rules.temp_band(request.temp_c)
