@@ -26,6 +26,9 @@ export default function Profile({ status }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [city, setCity] = useState("");
+  const [cityMessage, setCityMessage] = useState("");
+  const [savingCity, setSavingCity] = useState(false);
 
   const load = async () => {
     try {
@@ -46,7 +49,29 @@ export default function Profile({ status }) {
 
   useEffect(() => {
     load();
+    api
+      .weather()
+      .then((body) => {
+        if (body.city) setCity(body.city);
+      })
+      .catch(() => {});
   }, []);
+
+  const saveCity = async () => {
+    const name = city.trim();
+    if (!name) return;
+    setSavingCity(true);
+    setCityMessage("");
+    try {
+      const body = await api.setCity(name);
+      setCity(body.city.split("·").pop());
+      setCityMessage(`已设为 ${body.city}，首页会自动取温度了。`);
+    } catch (cityError) {
+      setCityMessage(cityError.message);
+    } finally {
+      setSavingCity(false);
+    }
+  };
 
   const update = (patch) => setForm((value) => ({ ...value, ...patch }));
 
@@ -175,6 +200,25 @@ export default function Profile({ status }) {
           {saving ? "在存……" : "保存"}
         </button>
       </form>
+
+      <section className="card p-5">
+        <p className="text-xs uppercase tracking-[0.2em] text-muted">城市</p>
+        <p className="mt-2 text-xs leading-relaxed text-muted">
+          用来取当天温度。不设也能用，只是每天早上要自己调温度。
+        </p>
+        <div className="mt-3 flex gap-2">
+          <input
+            className="field flex-1"
+            value={city}
+            onChange={(event) => setCity(event.target.value)}
+            placeholder="杭州"
+          />
+          <button type="button" className="btn" onClick={saveCity} disabled={savingCity}>
+            {savingCity ? "…" : "设定"}
+          </button>
+        </div>
+        {cityMessage ? <p className="mt-2 text-xs text-brass">{cityMessage}</p> : null}
+      </section>
 
       {report ? (
         <section className="card p-5">

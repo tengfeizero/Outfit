@@ -6,19 +6,23 @@
 
 from __future__ import annotations
 
+import json
 import mimetypes
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .. import db, profiler, rules
+from .. import capture, db, profiler, rules, wardrobe
+from ..clients import weather as weather_client
 from ..config import Settings, load
 from ..models import BodyProfile, Garment, Outfit
 from ..stylist.plan import OCCASION_LABELS, build_plans
+
+WEATHER_TTL = timedelta(hours=3)
 
 _STATIC_TYPES = {
     ".js": "text/javascript",
@@ -128,6 +132,10 @@ class OutfitPayload(BaseModel):
     temp_c: float | None = None
     garment_ids: list[int]
     rationale: str | None = None
+
+
+class CityPayload(BaseModel):
+    city: str
 
 
 class ProfilePayload(BaseModel):
@@ -251,7 +259,94 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         name = f"{uuid.uuid4().hex}{suffix}"
         target = settings.photo_dir / name
         target.write_bytes(await file.read())
-        return {"path": f"photos/{name}", "url": f"/media/photos/{name}"}
+
+        try:
+            capture.normalize(target)
+        except Exception as error:  # noqa: BLE001 — 图坏了不该让整个入库失败
+            target.unlink(missing_ok=True)
+            raise HTTPException(400, f"这张图打不开：{error}") from error
+
+        result = wardrobe.ingest(target, settings.cutout_dir)
+        cutout_rel = None
+        if result.cutout_path:
+            cutout_rel = f"cutouts/{Path(result.cutout_path).name}"
+
+        return {
+            "path": f"photos/{name}",
+            "url": f"/media/photos/{name}",
+            "color_hex": result.color_hex,
+            "color_name": result.color_name,
+            "cutout_path": cutout_rel,
+            "cutout_url": _media_url(cutout_rel),
+            "notice": result.cutout_skipped_reason,
+        }
+
+    # ---------------------------------------------------------- 天气
+
+    @app.get("/api/weather")
+    def get_weather() -> dict:
+        latitude = db.get_setting("city_lat")
+        longitude = db.get_setting("city_lon")
+        city_name = db.get_setting("city_name")
+
+        if not latitude or not longitude:
+            return {"configured": False}
+
+        city = weather_client.City(
+            name=city_name or "",
+            latitude=float(latitude),
+            longitude=float(longitude),
+        )
+
+        cached_raw = db.get_setting("weather_cache")
+        cached = json.loads(cached_raw) if cached_raw else None
+        if cached:
+            cached_at = datetime.fromisoformat(cached["fetched_at"])
+            fresh_enough = datetime.now(timezone.utc) - cached_at < WEATHER_TTL
+            if fresh_enough:
+                return {"configured": True, "stale": False, **cached, "city": city.name}
+
+        try:
+            current = weather_client.fetch(city)
+        except weather_client.WeatherError as error:
+            if cached:
+                return {
+                    "configured": True,
+                    "stale": True,
+                    "city": city.name,
+                    **cached,
+                    "error": f"这次没取到天气，下面是上一次的：{error}",
+                }
+            return {"configured": True, "stale": True, "city": city.name, "error": str(error)}
+
+        payload = {
+            "temp_c": current.effective_c,
+            "hour_temp": current.hour_temp,
+            "temp_min": current.temp_min,
+            "temp_max": current.temp_max,
+            "condition": current.condition,
+            "code": current.code,
+            "is_rainy": current.is_rainy,
+            "summary": current.summary(),
+            "fetched_at": current.fetched_at.isoformat(),
+        }
+        db.set_setting("weather_cache", json.dumps(payload))
+        return {"configured": True, "stale": False, "city": city.name, **payload}
+
+    @app.post("/api/weather/city")
+    def set_city(payload: CityPayload) -> dict:
+        try:
+            city = weather_client.geocode(payload.city)
+        except weather_client.WeatherError as error:
+            raise HTTPException(502, str(error)) from error
+        if city is None:
+            raise HTTPException(404, "没找到这个城市，换个写法试试（比如「杭州」而不是「杭」）")
+
+        db.set_setting("city_name", city.name)
+        db.set_setting("city_lat", str(city.latitude))
+        db.set_setting("city_lon", str(city.longitude))
+        db.delete_setting("weather_cache")
+        return {"ok": True, "city": city.label}
 
     # ---------------------------------------------------------- 方案
 

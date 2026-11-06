@@ -61,7 +61,7 @@ export default function App() {
 
         {tab === "today" && <Today status={status} onRecorded={refresh} />}
         {tab === "wardrobe" && <Wardrobe onChanged={refresh} />}
-        {tab === "add" && <AddItem onAdded={() => { refresh(); go("wardrobe"); }} />}
+        {tab === "add" && <AddItem onAdded={refresh} onGo={() => go("wardrobe")} />}
         {tab === "profile" && <Profile status={status} onSaved={refresh} />}
       </main>
 

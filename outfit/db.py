@@ -13,7 +13,7 @@ from typing import Iterator
 from sqlalchemy import event as sa_event
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from .models import BodyProfile, Event, Garment, Outfit
+from .models import AppSetting, BodyProfile, Event, Garment, Outfit
 
 _engine = None
 
@@ -152,6 +152,35 @@ def recent_outfit_sets(limit: int = 3) -> list[set[int]]:
     with session() as s:
         rows = s.exec(select(Outfit).order_by(Outfit.created_at.desc()).limit(limit)).all()
     return [{int(i) for i in row.garment_ids} for row in rows if row.garment_ids]
+
+
+# ---------------------------------------------------------------- 设置
+
+
+def get_setting(key: str, default: str | None = None) -> str | None:
+    with session() as s:
+        row = s.get(AppSetting, key)
+        return row.value if row else default
+
+
+def set_setting(key: str, value: str) -> None:
+    with session() as s:
+        row = s.get(AppSetting, key)
+        if row is None:
+            s.add(AppSetting(key=key, value=value))
+        else:
+            row.value = value
+            row.updated_at = datetime.now(timezone.utc)
+            s.add(row)
+        s.commit()
+
+
+def delete_setting(key: str) -> None:
+    with session() as s:
+        row = s.get(AppSetting, key)
+        if row is not None:
+            s.delete(row)
+            s.commit()
 
 
 # ---------------------------------------------------------------- 事件

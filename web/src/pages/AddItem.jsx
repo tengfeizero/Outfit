@@ -11,6 +11,8 @@ const CATEGORIES = [
   { key: "accessory", label: "配饰" },
 ];
 
+const CATEGORY_LABEL = Object.fromEntries(CATEGORIES.map((item) => [item.key, item.label]));
+
 const PALETTE = ["#F2F2F0", "#1A1A1A", "#8A8A8A", "#1F2A44", "#6E8CA8", "#D8CDB8", "#B08A5E", "#3A3A3A"];
 
 const initial = {
@@ -24,12 +26,14 @@ const initial = {
   image_path: null,
 };
 
-export default function AddItem({ onAdded }) {
+export default function AddItem({ onAdded, onGo }) {
   const [form, setForm] = useState(initial);
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [savedCount, setSavedCount] = useState(0);
 
   const update = (patch) => setForm((value) => ({ ...value, ...patch }));
 
@@ -40,8 +44,16 @@ export default function AddItem({ onAdded }) {
     setError("");
     try {
       const result = await api.upload(file);
-      update({ image_path: result.path });
-      setPreview(result.url);
+      // 主色是本地算出来的，直接填进去，省掉"选颜色"这一步
+      setForm((value) => ({
+        ...value,
+        image_path: result.path,
+        color_hex: result.color_hex || value.color_hex,
+        color_primary: result.color_name || value.color_primary,
+        name: value.name || `${result.color_name}${CATEGORY_LABEL[value.category] || "单品"}`,
+      }));
+      setPreview(result.cutout_url || result.url);
+      setNotice(result.notice || "");
     } catch (uploadError) {
       setError(uploadError.message);
     } finally {
@@ -64,8 +76,11 @@ export default function AddItem({ onAdded }) {
         material: form.material.trim() || null,
         label_confidence: 1.0,
       });
-      setForm(initial);
+      // 不跳走：连着录十件的时候，跳页是最烦的
+      setForm({ ...initial, category: form.category });
       setPreview(null);
+      setNotice("");
+      setSavedCount((count) => count + 1);
       onAdded?.();
     } catch (saveError) {
       setError(saveError.message);
@@ -79,7 +94,7 @@ export default function AddItem({ onAdded }) {
       <header>
         <h1 className="text-3xl font-semibold tracking-tight">入库</h1>
         <p className="mt-1 text-sm text-muted">
-          先手填。自动抠图和自动打标在下一步接，那之后你只要拍一张。
+          拍一张，颜色自动认出来。品类和厚薄点两下就好。
         </p>
       </header>
 
@@ -94,6 +109,7 @@ export default function AddItem({ onAdded }) {
         </div>
         <input type="file" accept="image/*" className="sr-only" onChange={pickFile} />
       </label>
+      {notice ? <p className="text-[11px] leading-relaxed text-muted/70">{notice}</p> : null}
 
       <label className="block">
         <span className="label">名称</span>
@@ -202,6 +218,16 @@ export default function AddItem({ onAdded }) {
       <button className="btn w-full" type="submit" disabled={saving}>
         {saving ? "在存……" : "存进衣橱"}
       </button>
+
+      {savedCount > 0 ? (
+        <div className="card p-4">
+          <p className="text-sm text-paper">已经存了 {savedCount} 件</p>
+          <p className="mt-1 text-xs text-muted">接着拍下一件就行，品类会保留。</p>
+          <button type="button" className="btn-ghost mt-3 w-full" onClick={onGo}>
+            去衣橱看看
+          </button>
+        </div>
+      ) : null}
     </form>
   );
 }

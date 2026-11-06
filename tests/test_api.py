@@ -123,12 +123,70 @@ def test_upload_rejects_weird_extension(client):
     assert response.status_code == 400
 
 
-def test_upload_saves_photo(client, tmp_path):
-    response = client.post("/api/upload", files={"file": ("shirt.jpg", b"fake-jpeg-bytes", "image/jpeg")})
-    assert response.status_code == 200
+def _jpeg_bytes(color=(31, 42, 68), background=(255, 255, 255)) -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+
+    image = Image.new("RGB", (240, 240), background)
+    image.paste(Image.new("RGB", (120, 240), color), (0, 0))
+    buffer = BytesIO()
+    image.save(buffer, "JPEG")
+    return buffer.getvalue()
+
+
+def test_upload_saves_photo_and_guesses_color(client, tmp_path):
+    response = client.post(
+        "/api/upload", files={"file": ("shirt.jpg", _jpeg_bytes(), "image/jpeg")}
+    )
+    assert response.status_code == 200, response.text
     body = response.json()
     assert body["path"].startswith("photos/")
     assert (tmp_path / "data" / body["path"]).exists()
+    assert body["color_hex"].startswith("#")
+    assert body["color_name"]
+    # 没装 rembg 时不该报错，只给一句说明
+    if body["cutout_path"] is None:
+        assert body["notice"]
+
+
+def test_upload_rejects_broken_image(client):
+    response = client.post(
+        "/api/upload", files={"file": ("x.jpg", b"not-an-image", "image/jpeg")}
+    )
+    assert response.status_code == 400
+
+
+def test_weather_is_unconfigured_by_default(client):
+    assert client.get("/api/weather").json() == {"configured": False}
+
+
+def test_set_city_stores_coordinates(client, monkeypatch):
+    from outfit.web import api as api_module
+
+    monkeypatch.setattr(
+        api_module.weather_client,
+        "geocode",
+        lambda name: api_module.weather_client.City(
+            name="杭州", latitude=30.29, longitude=120.16, admin="浙江"
+        ),
+    )
+    body = client.post("/api/weather/city", json={"city": "杭州"}).json()
+    assert body["ok"] is True
+    assert "杭州" in body["city"]
+
+    from outfit import db
+
+    assert db.get_setting("city_lat") == "30.29"
+    assert db.get_setting("city_name") == "杭州"
+
+
+def test_set_city_reports_unknown_place(client, monkeypatch):
+    from outfit.web import api as api_module
+
+    monkeypatch.setattr(api_module.weather_client, "geocode", lambda name: None)
+    response = client.post("/api/weather/city", json={"city": "火星"})
+    assert response.status_code == 404
 
 
 def test_javascript_is_served_as_javascript(tmp_path):

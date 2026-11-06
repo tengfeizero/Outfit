@@ -51,6 +51,9 @@ export const api = {
   plan: (occasion, temp_c) => jsonPost("/api/plan", { occasion, temp_c }),
   saveOutfit: (payload) => jsonPost("/api/outfits", payload),
   markWorn: (id) => jsonPost(`/api/outfits/${id}/worn`, {}),
+
+  weather: () => request("/api/weather"),
+  setCity: (city) => jsonPost("/api/weather/city", { city }),
 };
 
 export const CATEGORY_LABELS = {

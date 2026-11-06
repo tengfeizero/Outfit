@@ -96,6 +96,7 @@ export default function Today({ status }) {
   const [occasions, setOccasions] = useState([]);
   const [occasion, setOccasion] = useState("work");
   const [temp, setTemp] = useState(18);
+  const [weather, setWeather] = useState(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -103,6 +104,17 @@ export default function Today({ status }) {
 
   useEffect(() => {
     api.occasions().then((body) => setOccasions(body.occasions)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api
+      .weather()
+      .then((body) => {
+        setWeather(body);
+        // 有天气就先把温度摆好，省得每天早上点加减号
+        if (typeof body.temp_c === "number") setTemp(Math.round(body.temp_c));
+      })
+      .catch(() => setWeather({ configured: false, error: "取天气失败" }));
   }, []);
 
   const generate = async (excludeIds = []) => {
@@ -128,6 +140,20 @@ export default function Today({ status }) {
   };
 
   const empty = status && status.garments === 0;
+
+  let weatherHint = "";
+  if (weather === null) {
+    weatherHint = "在取天气……";
+  } else if (weather.configured === false) {
+    weatherHint = "还没设城市——去「我的」填一下，这里以后就是当天温度，不用手调。";
+  } else if (typeof weather.temp_c === "number") {
+    weatherHint =
+      `${weather.city} · ${weather.summary} · 出门约 ${weather.temp_c}℃` +
+      (weather.is_rainy ? " · 记得带伞" : "") +
+      (weather.stale ? "（上次的数据）" : "");
+  } else {
+    weatherHint = weather.error || "没取到天气，手动调一下温度。";
+  }
 
   return (
     <div className="space-y-6">
@@ -185,7 +211,7 @@ export default function Today({ status }) {
             +
           </button>
         </div>
-        <p className="mt-2 text-[11px] text-muted/70">天气自动获取在下一步接（Open-Meteo）。</p>
+        <p className="mt-2 text-[11px] leading-relaxed text-muted/70">{weatherHint}</p>
       </section>
 
       <button className="btn w-full" onClick={() => generate()} disabled={loading || empty}>

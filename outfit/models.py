@@ -120,3 +120,16 @@ class Event(SQLModel, table=True):
     type: str
     payload: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
+
+
+class AppSetting(SQLModel, table=True):
+    """零散的键值配置：城市、坐标、上次的天气缓存。
+
+    不为这些单开字段，是因为它们会一直长，表结构不想跟着改。
+    """
+
+    __tablename__ = "app_setting"
+
+    key: str = Field(primary_key=True)
+    value: str
+    updated_at: datetime = Field(default_factory=utcnow)
