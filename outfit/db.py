@@ -13,7 +13,7 @@ from typing import Iterator
 from sqlalchemy import event as sa_event
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from .models import AppSetting, BodyProfile, Event, Garment, Outfit
+from .models import AgentRun, AppSetting, BodyProfile, Event, Garment, Outfit
 
 _engine = None
 
@@ -193,6 +193,27 @@ def delete_setting(key: str) -> None:
         if row is not None:
             s.delete(row)
             s.commit()
+
+
+# ---------------------------------------------------------------- 运行轨迹
+
+
+def save_run(run: AgentRun) -> AgentRun:
+    with session() as s:
+        s.add(run)
+        s.commit()
+        s.refresh(run)
+        return run
+
+
+def list_runs(limit: int = 20) -> list[AgentRun]:
+    with session() as s:
+        return list(s.exec(select(AgentRun).order_by(AgentRun.created_at.desc()).limit(limit)).all())
+
+
+def get_run(run_id: int) -> AgentRun | None:
+    with session() as s:
+        return s.get(AgentRun, run_id)
 
 
 # ---------------------------------------------------------------- 事件

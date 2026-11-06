@@ -302,6 +302,39 @@ def test_shopping_rejects_unknown_category(client):
     assert client.post("/api/shopping", json={"category": "spaceship"}).status_code == 400
 
 
+def test_agent_run_produces_a_trace(client):
+    for garment in [
+        {"name": "白衬衫", "category": "top", "formality": 3, "warmth": 2},
+        {"name": "藏蓝西裤", "category": "bottom", "formality": 3, "warmth": 3},
+        {"name": "黑外套", "category": "outerwear", "formality": 3, "warmth": 3},
+        {"name": "黑皮鞋", "category": "shoes", "formality": 3, "warmth": 2},
+    ]:
+        _add(client, **garment)
+
+    body = client.post("/api/agent/run", json={"text": "今天上班", "temp_c": 18}).json()
+    assert body["run_id"] is not None
+    assert body["status"] == "ok"
+    assert body["source"] == "fallback"  # 测试环境没有模型，走确定性流程
+    assert len(body["steps"]) >= 3
+    assert body["plans"], "至少得给出一套方案"
+    assert body["steps"][0]["action"] == "get_weather"
+
+    listed = client.get("/api/agent/runs").json()["runs"]
+    assert listed and listed[0]["id"] == body["run_id"]
+
+    detail = client.get(f"/api/agent/runs/{body['run_id']}").json()
+    assert detail["text"] == "今天上班"
+    assert len(detail["steps"]) == len(body["steps"])
+
+
+def test_agent_run_rejects_empty_text(client):
+    assert client.post("/api/agent/run", json={"text": "   "}).status_code == 400
+
+
+def test_agent_run_detail_404(client):
+    assert client.get("/api/agent/runs/9999").status_code == 404
+
+
 def test_render_falls_back_when_daily_quota_is_used_up(tmp_path):
     """额度用完时不给用户报错，直接给搭配板并说明原因。"""
     from outfit import db

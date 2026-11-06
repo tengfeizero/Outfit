@@ -50,6 +50,8 @@ export const api = {
   },
 
   plan: (occasion, temp_c, text = "") => jsonPost("/api/plan", { occasion, temp_c, text }),
+  agentRun: (text, temp_c) => jsonPost("/api/agent/run", { text, temp_c }),
+  agentRuns: () => request("/api/agent/runs"),
   saveOutfit: (payload) => jsonPost("/api/outfits", payload),
   markWorn: (id) => jsonPost(`/api/outfits/${id}/worn`, {}),
 

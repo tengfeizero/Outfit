@@ -14,6 +14,47 @@ def _client(handler) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
+# ---------------------------------------------------------------- JSON 提取
+
+
+def test_extract_json_plain():
+    assert tokenhub.extract_json('{"a": 1}') == {"a": 1}
+
+
+def test_extract_json_takes_the_first_of_several():
+    """模型有时候会连着吐两个对象，贪婪正则会把它们粘成非法 JSON。"""
+    assert tokenhub.extract_json('{"a": 1} 然后 {"b": 2}') == {"a": 1}
+
+
+def test_extract_json_skips_surrounding_prose():
+    raw = '好的，这一步应该收工：{"action": "finish", "args": {"summary": "好了"}} 完成'
+    assert tokenhub.extract_json(raw)["action"] == "finish"
+
+
+def test_extract_json_strips_code_fence():
+    assert tokenhub.extract_json('```json\n{"a": 1}\n```') == {"a": 1}
+
+
+def test_extract_json_ignores_braces_inside_strings():
+    assert tokenhub.extract_json('{"note": "这里有个 } 括号", "a": 1}')["a"] == 1
+
+
+def test_extract_json_repairs_fullwidth_quotes():
+    """中文模型常输出全角引号，那不是合法 JSON。"""
+    raw = "{“action”: “finish”, “args”: {“summary”: “好了”}}"
+    assert tokenhub.extract_json(raw)["action"] == "finish"
+
+
+def test_extract_json_rejects_garbage():
+    with pytest.raises(tokenhub.TokenHubError):
+        tokenhub.extract_json("完全没有 JSON")
+
+
+def test_extract_json_rejects_empty():
+    with pytest.raises(tokenhub.TokenHubError):
+        tokenhub.extract_json("   ")
+
+
 # ---------------------------------------------------------------- 打标解析
 
 

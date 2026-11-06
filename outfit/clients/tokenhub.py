@@ -70,6 +70,76 @@ VALID_CATEGORIES = {
 _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
 
 
+def _repair_quotes(text: str) -> str:
+    """中文模型常把引号写成全角，JSON 直接非法。这是最常见的坏法，先修它。"""
+    for source, target in (
+        ("\u201c", '"'),
+        ("\u201d", '"'),
+        ("\u2018", "'"),
+        ("\u2019", "'"),
+        ("\uff02", '"'),
+    ):
+        text = text.replace(source, target)
+    return text
+
+
+def extract_json(text: str) -> dict:
+    """从模型输出里取出一个合法 JSON 对象。
+
+    不用正则：`\\{.*\\}` 是贪婪的，模型吐两个对象或后面跟一段解释，
+    就会粘成一段非法 JSON——实测踩过这个坑。这里按括号配对逐个试。
+    """
+    if not text or not text.strip():
+        raise TokenHubError("模型没有返回内容")
+
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z]*\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    for candidate_text in (cleaned, _repair_quotes(cleaned)):
+        try:
+            parsed = json.loads(candidate_text)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    text = _repair_quotes(text)
+
+    depth = 0
+    start = -1
+    in_string = False
+    escaped = False
+    for index, char in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+        elif char == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and start >= 0:
+                try:
+                    candidate = json.loads(text[start : index + 1])
+                except json.JSONDecodeError:
+                    start = -1
+                    continue
+                if isinstance(candidate, dict):
+                    return candidate
+                start = -1
+
+    raise TokenHubError(f"模型返回的不是合法 JSON：{text.strip()[:80]!r}")
+
+
 class TokenHubError(RuntimeError):
     """调用失败。调用方要么降级、要么把这句话原样给用户看。"""
 
@@ -112,8 +182,8 @@ def parse_tags(raw: str) -> Tags:
     if not match:
         raise TokenHubError("模型没有返回可解析的内容")
     try:
-        payload = json.loads(match.group(0))
-    except json.JSONDecodeError as error:
+        payload = extract_json(raw or "")
+    except TokenHubError as error:
         raise TokenHubError(f"模型返回的不是合法 JSON：{error}") from error
 
     category = str(payload.get("category", "")).strip().lower()
@@ -196,11 +266,10 @@ class Judgement:
 def parse_judgement(raw: str) -> Judgement:
     match = _JSON_BLOCK.search(raw or "")
     if not match:
-        # 没给出可解析的判断，不能当成通过——宁可保守
         return Judgement(ok=False, note="校验没给出结论")
     try:
-        payload = json.loads(match.group(0))
-    except json.JSONDecodeError:
+        payload = extract_json(raw or "")
+    except TokenHubError:
         return Judgement(ok=False, note="校验结果不是合法 JSON")
 
     same_person = bool(payload.get("same_person", False))
@@ -273,6 +342,50 @@ class TokenHub:
         except ValueError as error:
             raise TokenHubError("TokenHub 返回的不是 JSON") from error
 
+    # ------------------------------------------------------------ 编排
+
+    def decide_action(self, system: str, transcript: str) -> dict:
+        """调度器的脑子：看完进展，决定下一步调什么工具。
+
+        思维模型偶尔会把 token 花在思考上、正文是空的，所以给足预算，
+        并且给一次重说的机会——调度失败一次就整单报废，代价太大。
+        """
+        last_error: Exception | None = None
+        bad_answer = ""
+        for attempt in range(2):
+            prompt = transcript
+            if attempt > 0:
+                prompt = (
+                    transcript
+                    + f"\n\n你上一条回答是：{bad_answer}\n那不是合法 JSON。"
+                    "请把它转成一个 JSON 动作对象，只输出 JSON。"
+                )
+            try:
+                return self._decide_once(system, prompt)
+            except TokenHubError as error:
+                last_error = error
+                bad_answer = str(error)[:200]
+        raise TokenHubError(f"调度器连续两次没给出可解析的动作：{last_error}")
+
+    def _decide_once(self, system: str, transcript: str) -> dict:
+        payload = {
+            "model": self.text_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": transcript},
+            ],
+            # 让服务端把格式钉死，比在提示词里求它"只输出 JSON"可靠得多
+            "response_format": {"type": "json_object"},
+            "max_tokens": 2000,
+        }
+        data = self._post("/v1/chat/completions", payload)
+        try:
+            message = data["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError) as error:
+            raise TokenHubError("调度器没有返回内容") from error
+        content = message.get("content") or message.get("reasoning_content") or ""
+        return extract_json(content)
+
     # ------------------------------------------------------------ 意图
 
     def parse_intent(self, text: str) -> dict:
@@ -286,6 +399,7 @@ class TokenHub:
                 }
             ],
             # hy4 是思维模型：token 给少了，思考过程会把额度吃光，正文就是空的
+            "response_format": {"type": "json_object"},
             "max_tokens": 800,
         }
         data = self._post("/v1/chat/completions", payload)
@@ -296,14 +410,7 @@ class TokenHub:
 
         # 正文为空时退回思考内容——它末尾通常也带着那个 JSON
         content = message.get("content") or message.get("reasoning_content") or ""
-
-        match = _JSON_BLOCK.search(content)
-        if not match:
-            raise TokenHubError("意图识别没有给出可解析的结果")
-        try:
-            return json.loads(match.group(0))
-        except json.JSONDecodeError as error:
-            raise TokenHubError("意图识别的结果不是合法 JSON") from error
+        return extract_json(content)
 
     # ------------------------------------------------------------ 打标
 

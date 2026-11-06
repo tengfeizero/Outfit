@@ -155,12 +155,16 @@ export default function Today({ status }) {
     setLoading(true);
     setError("");
     try {
-      const body = await api.plan(occasion, temp, said.trim());
-      const label =
-        occasions.find((item) => item.key === (body.occasion || occasion))?.label || "";
-      const plans = body.plans.map((plan) => ({
+      // 说了一句话 → 让它自己决定怎么走；只点按钮 → 走固定的快路径
+      const body = said.trim()
+        ? await api.agentRun(said.trim(), temp)
+        : await api.plan(occasion, temp, "");
+
+      const resolved = body.occasion || occasion;
+      const label = occasions.find((item) => item.key === resolved)?.label || "";
+      const plans = (body.plans || []).map((plan) => ({
         ...plan,
-        occasion: body.occasion || occasion,
+        occasion: resolved,
         occasion_label: label,
         temp_c: temp,
       }));
@@ -277,13 +281,39 @@ export default function Today({ status }) {
       {data ? (
         <section className="space-y-4">
           <p className="text-sm text-muted">
-            {data.band_label} · {data.advice}
+            {data.band_label ? `${data.band_label} · ` : ""}
+            {data.advice || ""}
           </p>
           {data.interpretation ? (
             <p className="text-xs text-brass">{data.interpretation}</p>
           ) : null}
           {data.relaxed ? (
             <p className="text-xs text-muted">补充：{data.relaxed}。</p>
+          ) : null}
+
+          {data.steps && data.steps.length ? (
+            <details className="card p-4">
+              <summary className="cursor-pointer text-sm text-muted">
+                它是怎么想的（{data.steps.length} 步{data.cost ? ` · 约 ¥${data.cost}` : ""}）
+              </summary>
+              <ol className="mt-3 space-y-3">
+                {data.steps.map((step) => (
+                  <li key={step.index}>
+                    <div className="flex items-baseline gap-2 text-xs">
+                      <span className="text-brass">{step.index}.</span>
+                      <span className="font-mono text-paper">{step.action}</span>
+                      <span className="ml-auto text-muted/60">{step.elapsed}s</span>
+                    </div>
+                    {step.thought ? (
+                      <p className="mt-1 pl-5 text-xs text-muted">{step.thought}</p>
+                    ) : null}
+                    <p className="mt-1 break-all pl-5 font-mono text-[10px] leading-relaxed text-muted/50">
+                      {JSON.stringify(step.observation).slice(0, 160)}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            </details>
           ) : null}
 
           {data.plans.length === 0 ? (

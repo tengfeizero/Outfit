@@ -71,6 +71,15 @@ class Settings:
         return self.env.get("TOKENHUB_BASE", "https://tokenhub.tencentmaas.com")
 
     @property
+    def text_model(self) -> str:
+        """调度和意图识别用的文本模型。
+
+        不用思维模型：它会把 token 花在思考上，JSON 被截断就调度失败。
+        要换回思维模型（比如 hy4），在 .env 里设 TOKENHUB_TEXT_MODEL 即可。
+        """
+        return self.env.get("TOKENHUB_TEXT_MODEL") or "glm-5.3-flash"
+
+    @property
     def has_image_key(self) -> bool:
         return bool(self.tokenhub_key or self.env.get("IMAGE_API_KEY"))
 

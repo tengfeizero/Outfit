@@ -16,11 +16,11 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .. import capture, db, intent, profiler, rules, scoring, shopping, wardrobe
+from .. import agent, capture, db, intent, profiler, rules, scoring, shopping, wardrobe
 from ..clients import weather as weather_client
 from ..clients.tokenhub import TokenHub, TokenHubError
 from ..config import Settings, load
-from ..models import BodyProfile, Garment, Outfit
+from ..models import AgentRun, BodyProfile, Garment, Outfit
 from ..renderer import render as render_plan
 from ..stylist.plan import OCCASION_LABELS, build_plans
 
@@ -171,6 +171,11 @@ class ProfilePayload(BaseModel):
     photo_upper: str | None = None
 
 
+class AgentRunPayload(BaseModel):
+    text: str
+    temp_c: float | None = None
+
+
 class AutoTagPayload(BaseModel):
     image_path: str
 
@@ -178,7 +183,7 @@ class AutoTagPayload(BaseModel):
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load()
     db.init_engine(settings.db_path)
-    hub = TokenHub(settings.tokenhub_key, settings.tokenhub_base)
+    hub = TokenHub(settings.tokenhub_key, settings.tokenhub_base, text_model=settings.text_model)
 
     app = FastAPI(title="本地穿搭助手", version="0.1.0")
     app.mount("/media", StaticFiles(directory=str(settings.data_dir)), name="media")
@@ -460,6 +465,84 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 }
                 for item in plans
             ],
+        }
+
+    # ---------------------------------------------------------- agent 运行
+
+    @app.post("/api/agent/run")
+    def agent_run(payload: AgentRunPayload) -> dict:
+        text = payload.text.strip()
+        if not text:
+            raise HTTPException(400, "说一句话吧，比如「明天上午面试」")
+
+        result = agent.run(
+            text,
+            hub=hub,
+            data_dir=settings.data_dir,
+            render_dir=settings.render_dir,
+            temp_override=payload.temp_c,
+        )
+        saved = db.save_run(
+            AgentRun(
+                text=text,
+                status=result.status,
+                occasion=result.occasion,
+                steps=[step.to_dict() for step in result.steps],
+                cost=result.cost,
+            )
+        )
+
+        return {
+            "run_id": saved.id,
+            "status": result.status,
+            "source": result.source,
+            "summary": result.summary,
+            "cost": round(result.cost, 3),
+            "occasion": result.occasion,
+            "steps": [step.to_dict() for step in result.steps],
+            "plans": [
+                {
+                    "label": plan.label,
+                    "score": plan.score,
+                    "rationale": plan.rationale,
+                    "garment_ids": plan.ids,
+                    "items": [_garment_dict(g) for g in plan.items],
+                }
+                for plan in result.plans
+            ],
+        }
+
+    @app.get("/api/agent/runs")
+    def agent_runs(limit: int = 20) -> dict:
+        rows = db.list_runs(limit=limit)
+        return {
+            "runs": [
+                {
+                    "id": row.id,
+                    "text": row.text,
+                    "status": row.status,
+                    "occasion": row.occasion,
+                    "cost": round(row.cost, 3),
+                    "steps": len(row.steps),
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ]
+        }
+
+    @app.get("/api/agent/runs/{run_id}")
+    def agent_run_detail(run_id: int) -> dict:
+        row = db.get_run(run_id)
+        if row is None:
+            raise HTTPException(404, "没有这次运行")
+        return {
+            "id": row.id,
+            "text": row.text,
+            "status": row.status,
+            "occasion": row.occasion,
+            "cost": round(row.cost, 3),
+            "steps": row.steps,
+            "created_at": row.created_at.isoformat(),
         }
 
     @app.post("/api/outfits")

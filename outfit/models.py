@@ -133,3 +133,20 @@ class AppSetting(SQLModel, table=True):
     key: str = Field(primary_key=True)
     value: str
     updated_at: datetime = Field(default_factory=utcnow)
+
+
+class AgentRun(SQLModel, table=True):
+    """一次 agent 运行的完整轨迹。
+
+    存下来不是为了审计，是为了能回放：面试时"它是怎么想的"比"它做成了"更有说服力。
+    """
+
+    __tablename__ = "agent_run"
+
+    id: int | None = Field(default=None, primary_key=True)
+    text: str
+    status: str = "ok"  # ok / failed / budget / fallback
+    occasion: str | None = None
+    steps: list[dict] = Field(default_factory=list, sa_column=Column(JSON))
+    cost: float = 0.0
+    created_at: datetime = Field(default_factory=utcnow)

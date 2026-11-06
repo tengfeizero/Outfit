@@ -5,6 +5,15 @@
 
 设计文档：[docs/superpowers/specs/2026-11-06-ai-outfit-agent-design.md](docs/superpowers/specs/2026-11-06-ai-outfit-agent-design.md)
 实现计划：[docs/superpowers/plans/2026-11-06-outfit-implementation-plan.md](docs/superpowers/plans/2026-11-06-outfit-implementation-plan.md)
+**架构与选型**：[docs/architecture.md](docs/architecture.md) —— 循环怎么跑、失败怎么兜、以及"为什么不用 agent 框架"
+
+## 它是 agent 吗
+
+是，但要说清楚是哪种：**工具调用循环 + 失败降级，不是自主规划的 multi-agent。**
+
+说一句话（"明天上午面试，外面有点冷"），模型自己决定先查天气、再检索衣橱、再组套，每一步的想法和结果都留在轨迹里，前端可以看到。最多 6 步、¥1.2、2 张图，超了就停。
+
+没配模型时它退化成确定性流水线——照样出方案，只是不会自己决定步骤。
 
 ## 现在能用到什么程度
 
