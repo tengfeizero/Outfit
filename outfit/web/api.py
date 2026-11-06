@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,30 @@ from .. import db, profiler, rules
 from ..config import Settings, load
 from ..models import BodyProfile, Garment, Outfit
 from ..stylist.plan import OCCASION_LABELS, build_plans
+
+_STATIC_TYPES = {
+    ".js": "text/javascript",
+    ".mjs": "text/javascript",
+    ".css": "text/css",
+    ".json": "application/json",
+    ".svg": "image/svg+xml",
+    ".woff2": "font/woff2",
+    ".webp": "image/webp",
+}
+
+
+def fix_mimetypes() -> None:
+    """修 Windows 的 MIME 映射。
+
+    很多 Windows 机器的注册表把 .js 登记成 text/plain，Python 的 mimetypes 会照抄，
+    于是服务把前端脚本当纯文本发出去。浏览器对模块脚本做严格 MIME 检查，直接拒绝执行，
+    页面就停在"黑底、什么都没有"——CSS 是好的，JS 一行没跑。这个坑必须显式堵上。
+    """
+    for extension, media_type in _STATIC_TYPES.items():
+        mimetypes.add_type(media_type, extension)
+
+
+fix_mimetypes()
 
 OCCASION_LABELS_FOR_UI = [
     {"key": "interview", "label": "面试"},

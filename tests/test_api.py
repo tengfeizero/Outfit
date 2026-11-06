@@ -129,3 +129,30 @@ def test_upload_saves_photo(client, tmp_path):
     body = response.json()
     assert body["path"].startswith("photos/")
     assert (tmp_path / "data" / body["path"]).exists()
+
+
+def test_javascript_is_served_as_javascript(tmp_path):
+    """Windows 注册表把 .js 登记成 text/plain，浏览器会拒绝执行模块脚本。
+
+    这个回归测试守的就是"打开一片黑"那个 bug。
+    """
+    dist = tmp_path / "outfit" / "web" / "static"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><div id='root'></div>", encoding="utf-8")
+    (dist / "assets" / "app.js").write_text("console.log(1)", encoding="utf-8")
+    (dist / "assets" / "app.css").write_text("body{}", encoding="utf-8")
+
+    settings = Settings(root=tmp_path, data_dir=tmp_path / "data")
+    settings.ensure_dirs()
+    client = TestClient(create_app(settings))
+
+    js = client.get("/assets/app.js")
+    assert js.status_code == 200
+    assert js.headers["content-type"].startswith("text/javascript")
+
+    css = client.get("/assets/app.css")
+    assert css.headers["content-type"].startswith("text/css")
+
+    index = client.get("/")
+    assert index.status_code == 200
+    assert "root" in index.text
