@@ -21,6 +21,17 @@ import httpx
 DEFAULT_BASE = "https://tokenhub.tencentmaas.com"
 VISION_MODEL = "hy-vision-2.0-instruct"
 IMAGE_MODEL = "hy-image-v3.5-preview"
+TEXT_MODEL = "hy4"
+
+INTENT_PROMPT = """把用户这句话里的场合归类。只输出 JSON，不要解释：
+{"occasion":"interview|work|date|sport|home|custom","reason":"十个字以内"}
+
+面试、面谈、答辩 → interview
+上班、开会、见客户、出差 → work
+约会、相亲、看电影 → date
+运动、健身、跑步、骑车、爬山 → sport
+在家、休息、宅 → home
+都不是 → custom"""
 
 TAG_PROMPT = """你是服装标注员。看这张照片里的单件衣服（不是模特，是衣服本身），输出一个 JSON 对象，不要任何解释、不要代码块：
 
@@ -211,12 +222,14 @@ class TokenHub:
         client: httpx.Client | None = None,
         vision_model: str = VISION_MODEL,
         image_model: str = IMAGE_MODEL,
+        text_model: str = TEXT_MODEL,
         timeout: float = 180.0,
     ) -> None:
         self.api_key = api_key
         self.base = base.rstrip("/")
         self.vision_model = vision_model
         self.image_model = image_model
+        self.text_model = text_model
         self._client = client
         self._timeout = timeout
 
@@ -255,6 +268,38 @@ class TokenHub:
             return response.json()
         except ValueError as error:
             raise TokenHubError("TokenHub 返回的不是 JSON") from error
+
+    # ------------------------------------------------------------ 意图
+
+    def parse_intent(self, text: str) -> dict:
+        """一句话 → 场合。用的是便宜的文本模型，一次几分钱。"""
+        payload = {
+            "model": self.text_model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"{INTENT_PROMPT}\n\n用户：{text}",
+                }
+            ],
+            # hy4 是思维模型：token 给少了，思考过程会把额度吃光，正文就是空的
+            "max_tokens": 800,
+        }
+        data = self._post("/v1/chat/completions", payload)
+        try:
+            message = data["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError) as error:
+            raise TokenHubError("意图识别没有返回内容") from error
+
+        # 正文为空时退回思考内容——它末尾通常也带着那个 JSON
+        content = message.get("content") or message.get("reasoning_content") or ""
+
+        match = _JSON_BLOCK.search(content)
+        if not match:
+            raise TokenHubError("意图识别没有给出可解析的结果")
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError as error:
+            raise TokenHubError("意图识别的结果不是合法 JSON") from error
 
     # ------------------------------------------------------------ 打标
 

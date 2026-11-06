@@ -128,6 +128,7 @@ function PlanCard({ plan, index, onSaved, onWorn }) {
 export default function Today({ status }) {
   const [occasions, setOccasions] = useState([]);
   const [occasion, setOccasion] = useState("work");
+  const [said, setSaid] = useState("");
   const [temp, setTemp] = useState(18);
   const [weather, setWeather] = useState(null);
   const [data, setData] = useState(null);
@@ -154,11 +155,12 @@ export default function Today({ status }) {
     setLoading(true);
     setError("");
     try {
-      const body = await api.plan(occasion, temp);
-      const label = occasions.find((item) => item.key === occasion)?.label || "";
+      const body = await api.plan(occasion, temp, said.trim());
+      const label =
+        occasions.find((item) => item.key === (body.occasion || occasion))?.label || "";
       const plans = body.plans.map((plan) => ({
         ...plan,
-        occasion,
+        occasion: body.occasion || occasion,
         occasion_label: label,
         temp_c: temp,
       }));
@@ -213,6 +215,19 @@ export default function Today({ status }) {
         </div>
       ) : null}
 
+      <section>
+        <p className="label">说一句也行</p>
+        <input
+          className="field"
+          value={said}
+          onChange={(event) => setSaid(event.target.value)}
+          placeholder="明天上午面试，下午骑车去郊区"
+        />
+        <p className="mt-2 text-[11px] leading-relaxed text-muted/70">
+          说了就不看下面的场合按钮，它自己判断。
+        </p>
+      </section>
+
       <section className="space-y-3">
         <p className="label">场合</p>
         <div className="flex flex-wrap gap-2">
@@ -264,6 +279,9 @@ export default function Today({ status }) {
           <p className="text-sm text-muted">
             {data.band_label} · {data.advice}
           </p>
+          {data.interpretation ? (
+            <p className="text-xs text-brass">{data.interpretation}</p>
+          ) : null}
 
           {data.plans.length === 0 ? (
             <div className="card p-5">

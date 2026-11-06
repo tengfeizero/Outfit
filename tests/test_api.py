@@ -110,6 +110,28 @@ def test_plan_returns_three_plans(client, wardrobe):
     assert client.post(f"/api/outfits/{saved['id']}/worn").json()["ok"] is True
 
 
+def test_plan_reads_natural_language(client):
+    for garment in [
+        {"name": "白衬衫", "category": "top", "formality": 4, "warmth": 2},
+        {"name": "藏蓝西裤", "category": "bottom", "formality": 4, "warmth": 3},
+        {"name": "藏蓝西装外套", "category": "outerwear", "formality": 4, "warmth": 3},
+        {"name": "黑皮鞋", "category": "shoes", "formality": 4, "warmth": 2},
+    ]:
+        _add(client, **garment)
+
+    body = client.post(
+        "/api/plan", json={"occasion": "work", "temp_c": 18, "text": "明天上午面试"}
+    ).json()
+    assert body["occasion"] == "interview"
+    assert "面试" in body["interpretation"]
+    assert body["plans"], "理解成面试之后应该照样出方案"
+
+
+def test_plan_without_text_keeps_the_chosen_occasion(client):
+    body = client.post("/api/plan", json={"occasion": "home", "temp_c": 20}).json()
+    assert body["occasion"] == "home"
+
+
 def test_occasions_have_formality_ranges(client):
     body = client.get("/api/occasions").json()
     keys = {item["key"] for item in body["occasions"]}

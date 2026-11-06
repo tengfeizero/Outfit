@@ -16,7 +16,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .. import capture, db, profiler, rules, scoring, shopping, wardrobe
+from .. import capture, db, intent, profiler, rules, scoring, shopping, wardrobe
 from ..clients import weather as weather_client
 from ..clients.tokenhub import TokenHub, TokenHubError
 from ..config import Settings, load
@@ -126,6 +126,7 @@ class GarmentPayload(BaseModel):
 class PlanRequest(BaseModel):
     occasion: str = "work"
     temp_c: float = 18.0
+    text: str = ""
     exclude_ids: list[int] = []
 
 
@@ -408,9 +409,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # "换一套"：把刚看过的这套当成"最近穿过"，用同一套重合扣分把它压下去
             recent = [*recent, set(request.exclude_ids)]
 
+        # 说了人话就先理解人话；模型不可用会退回关键词，不会因此失败
+        reading = intent.interpret(
+            request.text,
+            llm=hub if hub.available else None,
+            fallback=request.occasion,
+        )
+
         plans, pool = build_plans(
             wardrobe,
-            occasion=request.occasion,
+            occasion=reading.occasion,
             temp_c=request.temp_c,
             profile=profile,
             recent_outfit_ids=recent,
@@ -422,6 +430,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "band": band,
             "band_label": rules.BAND_LABELS[band],
             "advice": rules.temperature_advice(band, request.temp_c),
+            "occasion": reading.occasion,
+            "interpretation": reading.explanation,
             "usable": pool.is_usable(),
             "reason": pool.explain(),
             "pool_counts": {

@@ -49,7 +49,7 @@ export const api = {
     return request("/api/upload", { method: "POST", body: form });
   },
 
-  plan: (occasion, temp_c) => jsonPost("/api/plan", { occasion, temp_c }),
+  plan: (occasion, temp_c, text = "") => jsonPost("/api/plan", { occasion, temp_c, text }),
   saveOutfit: (payload) => jsonPost("/api/outfits", payload),
   markWorn: (id) => jsonPost(`/api/outfits/${id}/worn`, {}),
 
