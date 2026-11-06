@@ -20,6 +20,28 @@ function Swatch({ color, small = false }) {
 function PlanCard({ plan, index, onSaved, onWorn }) {
   const [busy, setBusy] = useState(false);
   const [savedId, setSavedId] = useState(null);
+  const [image, setImage] = useState(null);
+  const [note, setNote] = useState("");
+  const [rendering, setRendering] = useState(false);
+
+  const showBoard = async () => {
+    setRendering(true);
+    setNote("");
+    try {
+      const result = await api.render({
+        garment_ids: plan.garment_ids,
+        title: `${plan.occasion_label || ""} · ${plan.label}`.trim(),
+        subtitle: `${Math.round(plan.temp_c || 0)}℃`,
+        rationale: plan.rationale,
+      });
+      setImage(result.url);
+      setNote(result.note || "");
+    } catch (renderError) {
+      setNote(renderError.message);
+    } finally {
+      setRendering(false);
+    }
+  };
 
   const save = async () => {
     setBusy(true);
@@ -79,15 +101,26 @@ function PlanCard({ plan, index, onSaved, onWorn }) {
 
       <p className="px-5 pb-4 pt-3 text-sm leading-relaxed text-muted">{plan.rationale}</p>
 
-      <div className="flex gap-2 border-t border-edge px-5 py-4">
-        <button className="btn-ghost flex-1" onClick={save} disabled={busy || savedId}>
-          {savedId ? "已收藏" : "收藏"}
+      {image ? (
+        <div className="border-t border-edge bg-black/20">
+          <img src={image} alt="搭配图" className="w-full" />
+          {note ? <p className="px-5 pb-3 pt-2 text-[11px] leading-relaxed text-muted/70">{note}</p> : null}
+        </div>
+      ) : null}
+
+      <div className="border-t border-edge px-5 py-4">
+        <button className="btn w-full" onClick={showBoard} disabled={rendering}>
+          {rendering ? "在拼……" : image ? "重做这张图" : "看搭配图"}
         </button>
-        <button className="btn flex-1" onClick={wear} disabled={busy}>
-          今天就穿这套
-        </button>
+        <div className="mt-2 flex gap-2">
+          <button className="btn-ghost flex-1" onClick={save} disabled={busy || savedId}>
+            {savedId ? "已收藏" : "收藏"}
+          </button>
+          <button className="btn-ghost flex-1" onClick={wear} disabled={busy}>
+            今天就穿这套
+          </button>
+        </div>
       </div>
-      <p className="px-5 pb-4 text-[11px] text-muted/70">上身效果图在 M2 开放。</p>
     </article>
   );
 }
@@ -122,7 +155,13 @@ export default function Today({ status }) {
     setError("");
     try {
       const body = await api.plan(occasion, temp);
-      const plans = body.plans.map((plan) => ({ ...plan, occasion, temp_c: temp }));
+      const label = occasions.find((item) => item.key === occasion)?.label || "";
+      const plans = body.plans.map((plan) => ({
+        ...plan,
+        occasion,
+        occasion_label: label,
+        temp_c: temp,
+      }));
       setData({ ...body, plans });
       if (excludeIds.length && plans.length) {
         const same =

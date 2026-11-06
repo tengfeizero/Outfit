@@ -4,11 +4,13 @@ import Today from "./pages/Today.jsx";
 import Wardrobe from "./pages/Wardrobe.jsx";
 import AddItem from "./pages/AddItem.jsx";
 import Profile from "./pages/Profile.jsx";
+import Shopping from "./pages/Shopping.jsx";
 
 const TABS = [
   { key: "today", label: "今天", glyph: "◐" },
   { key: "wardrobe", label: "衣橱", glyph: "▤" },
   { key: "add", label: "入库", glyph: "＋" },
+  { key: "shopping", label: "买不买", glyph: "◈" },
   { key: "profile", label: "我的", glyph: "◍" },
 ];
 
@@ -63,6 +65,7 @@ export default function App() {
         {tab === "wardrobe" && <Wardrobe onChanged={refresh} />}
         {tab === "add" && <AddItem onAdded={refresh} onGo={() => go("wardrobe")} />}
         {tab === "profile" && <Profile status={status} onSaved={refresh} />}
+        {tab === "shopping" && <Shopping />}
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-edge bg-ink/95 backdrop-blur">

@@ -54,6 +54,9 @@ export const api = {
 
   weather: () => request("/api/weather"),
   setCity: (city) => jsonPost("/api/weather/city", { city }),
+
+  render: (payload) => jsonPost("/api/render", payload),
+  shopping: (payload) => jsonPost("/api/shopping", payload),
 };
 
 export const CATEGORY_LABELS = {

@@ -191,6 +191,45 @@ def test_set_city_reports_unknown_place(client, monkeypatch):
     assert response.status_code == 404
 
 
+def test_render_produces_a_board(client):
+    top = _add(client, name="白衬衫", category="top")
+    bottom = _add(client, name="黑西裤", category="bottom", color_primary="黑", color_hex="#1A1A1A")
+
+    body = client.post(
+        "/api/render",
+        json={"garment_ids": [top["id"], bottom["id"]], "title": "上班", "rationale": "配色稳。"},
+    ).json()
+    assert body["mode"] == "board"
+    assert body["url"].startswith("/media/renders/")
+    assert "搭配板" in body["note"]
+
+    image = client.get(body["url"])
+    assert image.status_code == 200
+    assert image.headers["content-type"].startswith("image/png")
+
+
+def test_render_rejects_unknown_garments(client):
+    assert client.post("/api/render", json={"garment_ids": [999]}).status_code == 400
+
+
+def test_shopping_judges_a_new_piece(client):
+    _add(client, name="黑西裤", category="bottom", color_primary="黑", color_hex="#1A1A1A")
+    _add(client, name="黑乐福鞋", category="shoes", color_primary="黑", color_hex="#1A1A1A")
+
+    body = client.post(
+        "/api/shopping",
+        json={"category": "top", "color_hex": "#F2F2F0", "color_primary": "白", "formality": 3},
+    ).json()
+    assert body["verdict"] in {"buy", "skip", "depends"}
+    assert body["title"]
+    assert body["reasons"]
+    assert body["pairs"]
+
+
+def test_shopping_rejects_unknown_category(client):
+    assert client.post("/api/shopping", json={"category": "spaceship"}).status_code == 400
+
+
 def test_javascript_is_served_as_javascript(tmp_path):
     """Windows 注册表把 .js 登记成 text/plain，浏览器会拒绝执行模块脚本。
 

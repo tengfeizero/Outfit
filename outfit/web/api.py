@@ -16,10 +16,11 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .. import capture, db, profiler, rules, wardrobe
+from .. import capture, db, profiler, rules, shopping, wardrobe
 from ..clients import weather as weather_client
 from ..config import Settings, load
 from ..models import BodyProfile, Garment, Outfit
+from ..renderer import render as render_plan
 from ..stylist.plan import OCCASION_LABELS, build_plans
 
 WEATHER_TTL = timedelta(hours=3)
@@ -136,6 +137,23 @@ class OutfitPayload(BaseModel):
 
 class CityPayload(BaseModel):
     city: str
+
+
+class RenderPayload(BaseModel):
+    garment_ids: list[int]
+    title: str = ""
+    subtitle: str = ""
+    rationale: str = ""
+
+
+class ShoppingPayload(BaseModel):
+    name: str = "新衣服"
+    category: str
+    color_primary: str = "未标注"
+    color_hex: str | None = None
+    warmth: int = 3
+    formality: int = 3
+    image_path: str | None = None
 
 
 class ProfilePayload(BaseModel):
@@ -429,7 +447,57 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db.log_event("outfit_worn", str(ids))
         return {"ok": True}
 
-    # 静态前端放在最后挂载：挂在 "/" 会把 /api 和 /media 一起吞掉
+    # ---------------------------------------------------------- 出图
+
+    @app.post("/api/render")
+    def render_outfit(payload: RenderPayload) -> dict:
+        items = [db.get_garment(garment_id) for garment_id in payload.garment_ids]
+        items = [item for item in items if item is not None]
+        if not items:
+            raise HTTPException(400, "这套里没有有效的单品")
+
+        result = render_plan(
+            items,
+            settings.render_dir,
+            title=payload.title,
+            subtitle=payload.subtitle,
+            rationale=payload.rationale,
+        )
+        db.log_event(f"render_{result.mode}", str(payload.garment_ids))
+
+        relative = f"renders/{Path(result.path).name}" if result.path else None
+        return {
+            "url": _media_url(relative),
+            "mode": result.mode,
+            "note": result.note,
+        }
+
+    # ---------------------------------------------------------- 买不买
+
+    @app.post("/api/shopping")
+    def judge_purchase(payload: ShoppingPayload) -> dict:
+        if payload.category not in (
+            "top",
+            "bottom",
+            "outerwear",
+            "dress",
+            "shoes",
+            "bag",
+            "accessory",
+        ):
+            raise HTTPException(400, "未知的品类")
+
+        candidate = Garment(**payload.model_dump())
+        wardrobe = db.list_garments()
+        verdict = shopping.evaluate(candidate, wardrobe)
+
+        partners = [db.get_garment(garment_id) for garment_id in verdict.pairs_with]
+        return {
+            **verdict.to_dict(),
+            "pairs": [_garment_dict(item) for item in partners if item is not None],
+        }
+
+    # ---------------------------------------------------------- 静态前端
     if settings.dist_dir.exists():
         app.mount("/", StaticBundle(directory=str(settings.dist_dir), html=True), name="ui")
 
