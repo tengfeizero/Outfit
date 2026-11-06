@@ -1,14 +1,18 @@
-# 依赖与构建
+# deps and build output
 node_modules/
 __pycache__/
 *.pyc
 .venv/
 web/dist/
 
-# 本机数据：照片、数据库、密钥
+# temp artifacts
+shot-*.png
+acl-recovery/
+
+# local data: photos, database, keys
 data/
 .env
 
-# 系统
+# system
 Thumbs.db
 .DS_Store
