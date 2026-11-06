@@ -1,0 +1,124 @@
+# 本地 AI 穿搭助手 · 实现计划
+
+- 日期：2026-11-06
+- 对应设计：`docs/superpowers/specs/2026-11-06-ai-outfit-agent-design.md`
+- 范围：M1（能看方案）→ M2（能看效果）→ M3（能判断买）
+
+每个任务是**可独立验证的一小步**：能单独跑、能单独测，坏了自己回滚。
+
+---
+
+## P0 · 项目骨架
+
+- [ ] `requirements.txt`（M1 只装轻依赖，`rembg` 延到 P7 并做成可选导入）
+- [ ] `outfit/__init__.py`、`config.py`（读 `.env`，无 key 进离线模式）
+- [ ] `.env.example`
+- **验收**：`python -c "import outfit"` 不报错。
+
+## P1 · 数据层
+
+- [ ] `models.py`：`BodyProfile / Garment / Outfit / ShoppingVerdict / Event` 五张表
+- [ ] `db.py`：连接、WAL、建表、`body_profile` 单行约束
+- [ ] `tests/test_db.py`：建表、单行约束、JSON 字段往返
+- **验收**：`pytest tests/test_db.py` 全绿。
+
+## P2 · 规则层（纯函数，不碰数据库）
+
+- [ ] `rules.py`：
+  - `temp_band(t)` → 五档
+  - `allowed_warmth(band)` / `jacket_required(band)`
+  - `formality_range(occasion)`
+  - `color_harmony(h1, h2, s1, s2, l1, l2)` → 0..1
+  - `is_neutral(color)`
+- [ ] `tests/test_rules.py`：边界值（28.0 / 21.9 / 7.9）、冷暖色、中性色
+- **验收**：单测覆盖每个分档的上下边界。
+
+## P3 · 候选池与打分
+
+- [ ] `candidates.py`：硬过滤（状态、厚薄、正式度、3 天内穿过）
+- [ ] `scoring.py`：设计文档 8.4 的加权公式
+- [ ] `tests/test_candidates.py`：**12 月不得出现短袖**；外套在 22 度以下必现；只有 5 件衣服时放宽"3 天"规则
+- **验收**：上述三条断言全绿。
+
+## P4 · 组套（无 LLM 版本）
+
+- [ ] `stylist/plan.py`：规则版组 3 套，满足 8.5 的全部约束
+- [ ] 三套之间至少 2 件不同；至少一套"最正式"、一套"最舒适"
+- [ ] 无 LLM 时用模板生成理由（"这套正式度 4，适合面试；深蓝＋米白是同色系"）
+- [ ] `tests/test_plan.py`：约束校验器对所有输出跑一遍
+- **验收**：给一个 10 件种子衣橱，任意场合/温度都能出 3 套且全部过约束。
+
+## P5 · 身体档案
+
+- [ ] `profiler.py`：BMI、体型档（有/无三围两套分支）
+- [ ] 明确不做"S/M/L"换算，只给版型建议
+- [ ] `tests/test_profiler.py`
+- **验收**：只有身高体重时也能返回体型档，不抛异常。
+
+## P6 · 入库
+
+- [ ] `capture.py`：落盘、EXIF 转正、长边缩到 1600
+- [ ] `wardrobe.py`：`ingest` → draft（抠图与打标都可失败降级）→ `confirm` 写库
+- [ ] `rembg` 可选导入：装了就抠，没装就白底
+- [ ] `tests/test_wardrobe.py`：draft 不写库；confirm 才写；抠图失败仍可入库
+- **验收**：无网络、无 key、无 rembg 三缺一的情况下也能完成一次入库。
+
+## P7 · API
+
+- [ ] `web/api.py`：档案、衣橱 CRUD、生成方案、保存方案、买不买
+- [ ] `tests/test_api.py`：TestClient 全链路（假适配器）
+- **验收**：`pytest` 全绿且零网络调用。
+
+## P8 · 前端骨架
+
+- [ ] `web/` Vite + React + Tailwind，五个页面路由
+- [ ] `npm run build` → `outfit/web/static`
+- **验收**：`npm run build` 无错，FastAPI 能托管出首页。
+
+## P9 · 今天页联调
+
+- [ ] 场合 chips、天气卡、生成按钮、三张方案卡
+- [ ] "换一套"重排、"收藏"
+- **验收**：手机浏览器上点得通，方案卡显示真实衣服缩略图。
+
+## P10 · 衣橱 / 入库 / 我的 / 买不买
+
+- [ ] 衣橱网格＋筛选＋编辑
+- [ ] 入库三步流程
+- [ ] 我的：档案表单＋采集规范提示
+- [ ] 买不买：结论卡
+- **验收**：五页全部可走通，无死链。
+
+## P11 · 启动与交付
+
+- [ ] `启动.bat`：检查依赖 → 起服务 → 打印二维码
+- [ ] `README.md`：三步安装、防火墙提示、清空数据
+- **验收**：新机器照 README 能跑起来。
+
+## P12 · M2 出图（设计文档 7.4）
+
+- [ ] `clients/imagegen.py` 适配器接口 + 至少一个真实实现
+- [ ] `renderer/compose.py`、`judge.py`、`board.py`
+- [ ] 忠实度三条硬标准、重试一次、降级搭配板
+- [ ] 每日 6 张限额、24 小时缓存
+- **验收**：断网/拒图/超时三种情况都能落到搭配板而不是报错。
+
+## P13 · M3 买不买
+
+- [ ] `shopping.py`：匹配度、重复判定、结论
+- **验收**：拍一件同品类同色已有两件的衣服，结论为"重复"。
+
+---
+
+## M1 完成定义
+
+录 10 件衣服 → 早上选"上班" → 15 秒内看到 3 套说得通的方案，每套带理由和单品缩略图；不接任何出图 API，不花一分钱。
+
+## 风险与预案
+
+| 风险 | 预案 |
+|---|---|
+| `rembg` 装不上（onnxruntime 与 Python 3.10 冲突） | 做成可选导入，退回白底；v2 换云抠图 |
+| Qwen-Image-Edit / Seedream 接口参数变动 | 适配器隔离，换供应商只改一个文件 |
+| 规则版组套太"死板" | 规则只负责合法性，多样性交给三套差异化约束；M2 再接 LLM 精排 |
+| 手机连不上局域网 | 启动时打印所有网卡地址；README 写明防火墙要允许"专用网络" |
