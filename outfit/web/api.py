@@ -480,7 +480,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(400, "这套里没有有效的单品")
 
         def provider(garments: list[Garment]) -> bytes:
-            """把人和衣服交给混元。任何一步不齐都抛错，由 renderer 降级。"""
+            """把人和衣服交给混元，出完再看一眼对不对。不齐或不对都抛错，由 renderer 降级。"""
             profile = db.get_profile()
             if profile is None or not profile.photo_full:
                 raise RuntimeError("还没传身体照片，去「我的」传一张全身照")
@@ -499,8 +499,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not references:
                 raise RuntimeError("这套里的衣服都还没有照片")
 
+            body = body_path.read_bytes()
             description = "、".join(garment.name for garment in garments[:4])
-            return hub.try_on(body_path.read_bytes(), references, description=description)
+
+            # 第一次用全部参考图；不过就缩到三件再试一次（参考图越多越容易走形）
+            attempts = [references]
+            if len(references) > 3:
+                attempts.append(references[:3])
+
+            last_note = ""
+            for attempt in attempts:
+                image = hub.try_on(body, attempt, description=description)
+                verdict = hub.judge_try_on(body, image, description)
+                if verdict.ok:
+                    return image
+                last_note = verdict.note
+            raise RuntimeError(f"生成的图没通过校验：{last_note}")
+
+        used_today = db.count_events_today("render_photo")
+        over_quota = hub.available and used_today >= settings.daily_render_limit
+        use_provider = hub.available and not over_quota
 
         result = render_plan(
             items,
@@ -508,15 +526,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             title=payload.title,
             subtitle=payload.subtitle,
             rationale=payload.rationale,
-            provider=provider if hub.available else None,
+            provider=provider if use_provider else None,
         )
-        db.log_event(f"render_{result.mode}", str(payload.garment_ids))
+        if over_quota:
+            result.note = (
+                f"今天 {settings.daily_render_limit} 张试穿图已经用完了，这是搭配板——明天恢复。"
+            )
+        if result.mode == "photo":
+            db.log_event("render_photo", str(payload.garment_ids))
 
         relative = f"renders/{Path(result.path).name}" if result.path else None
         return {
             "url": _media_url(relative),
             "mode": result.mode,
             "note": result.note,
+            "quota_left": max(0, settings.daily_render_limit - db.count_events_today("render_photo")),
         }
 
     # ---------------------------------------------------------- 买不买

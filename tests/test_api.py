@@ -280,6 +280,24 @@ def test_shopping_rejects_unknown_category(client):
     assert client.post("/api/shopping", json={"category": "spaceship"}).status_code == 400
 
 
+def test_render_falls_back_when_daily_quota_is_used_up(tmp_path):
+    """额度用完时不给用户报错，直接给搭配板并说明原因。"""
+    from outfit import db
+
+    settings = Settings(root=tmp_path, data_dir=tmp_path / "data", env={"TOKENHUB_API_KEY": "sk-x"})
+    settings.ensure_dirs()
+    client = TestClient(create_app(settings))
+
+    for _ in range(settings.daily_render_limit):
+        db.log_event("render_photo", "[]")
+
+    top = _add(client, name="白衬衫", category="top")
+    body = client.post("/api/render", json={"garment_ids": [top["id"]]}).json()
+    assert body["mode"] == "board"
+    assert "用完" in body["note"]
+    assert body["quota_left"] == 0
+
+
 def test_javascript_is_served_as_javascript(tmp_path):
     """Windows 注册表把 .js 登记成 text/plain，浏览器会拒绝执行模块脚本。
 

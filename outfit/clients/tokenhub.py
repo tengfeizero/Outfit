@@ -33,6 +33,15 @@ TAG_PROMPT = """你是服装标注员。看这张照片里的单件衣服（不�
   "confidence": 0到1的小数（你对这次判断有多确定）
 }"""
 
+JUDGE_PROMPT = """图1是原始照片，图2是穿上新衣服后的生成图。请严格检查：
+
+1. 脸和发型是不是同一个人（不是"像"，是同一个）；
+2. 身材比例、身高、站姿有没有被改动；
+3. 要求穿上的衣服：品类对不对、颜色对不对、有没有变成别的衣服。
+
+只输出 JSON，不要解释：
+{"same_person": true/false, "body_intact": true/false, "garment_ok": true/false, "issue": "一句话说明问题，没问题写 无"}"""
+
 VALID_CATEGORIES = {
     "top",
     "bottom",
@@ -160,6 +169,39 @@ def build_try_on_messages(
     return [{"role": "user", "content": pieces}]
 
 
+@dataclass
+class Judgement:
+    ok: bool
+    note: str
+    same_person: bool = True
+    body_intact: bool = True
+    garment_ok: bool = True
+
+
+def parse_judgement(raw: str) -> Judgement:
+    match = _JSON_BLOCK.search(raw or "")
+    if not match:
+        # 没给出可解析的判断，不能当成通过——宁可保守
+        return Judgement(ok=False, note="校验没给出结论")
+    try:
+        payload = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return Judgement(ok=False, note="校验结果不是合法 JSON")
+
+    same_person = bool(payload.get("same_person", False))
+    body_intact = bool(payload.get("body_intact", False))
+    garment_ok = bool(payload.get("garment_ok", False))
+    issue = str(payload.get("issue", "") or "").strip()
+    ok = same_person and body_intact and garment_ok
+    if ok:
+        note = "校验通过"
+    else:
+        note = issue if issue and issue != "无" else "校验未通过"
+    return Judgement(
+        ok=ok, note=note, same_person=same_person, body_intact=body_intact, garment_ok=garment_ok
+    )
+
+
 class TokenHub:
     def __init__(
         self,
@@ -276,3 +318,37 @@ class TokenHub:
         if image.status_code != 200 or not image.content:
             raise TokenHubError("生成结果的下载链接打不开")
         return image.content
+
+    # ------------------------------------------------------------ 校验
+
+    def judge_try_on(
+        self, body_image: bytes, result_image: bytes, description: str = ""
+    ) -> Judgement:
+        """再看一眼：人还是不是那个人，衣服还是不是那件衣服。
+
+        多花一次便宜调用，换掉"生成了一张好看但不像你"的图——那种图对用户
+        比没有图更糟，因为它会让人不信任整个系统。
+        """
+        prompt = JUDGE_PROMPT
+        if description:
+            prompt += f"\n\n要求穿上的衣服是：{description}"
+        payload = {
+            "model": self.vision_model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": _data_url(body_image)}},
+                        {"type": "image_url", "image_url": {"url": _data_url(result_image)}},
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ],
+            "max_tokens": 300,
+        }
+        data = self._post("/v1/chat/completions", payload)
+        try:
+            content = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as error:
+            raise TokenHubError("校验没有返回内容") from error
+        return parse_judgement(content)

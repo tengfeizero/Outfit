@@ -169,3 +169,51 @@ def test_generate_without_image_in_response_raises():
     )
     with pytest.raises(tokenhub.TokenHubError):
         hub.try_on(b"body", [b"g1"])
+
+
+# ---------------------------------------------------------------- 忠实度校验
+
+
+def test_judgement_passes_when_all_good():
+    verdict = tokenhub.parse_judgement(
+        '{"same_person":true,"body_intact":true,"garment_ok":true,"issue":"无"}'
+    )
+    assert verdict.ok is True
+    assert verdict.note == "校验通过"
+
+
+def test_judgement_fails_when_face_changed():
+    verdict = tokenhub.parse_judgement(
+        '{"same_person":false,"body_intact":true,"garment_ok":true,"issue":"脸被换了"}'
+    )
+    assert verdict.ok is False
+    assert "脸被换了" in verdict.note
+    assert verdict.same_person is False
+
+
+def test_judgement_is_conservative_on_garbage():
+    """解析不出来时不能当通过——宁可退回搭配板。"""
+    assert tokenhub.parse_judgement("看起来挺像的").ok is False
+
+
+def test_judgement_requires_every_check():
+    verdict = tokenhub.parse_judgement('{"same_person":true,"body_intact":true,"garment_ok":false}')
+    assert verdict.ok is False
+
+
+def test_judge_try_on_sends_two_images():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"same_person":true,"body_intact":true,"garment_ok":true}'}}]},
+        )
+
+    hub = tokenhub.TokenHub("sk-test", client=_client(handler))
+    verdict = hub.judge_try_on(b"body", b"result", description="藏蓝外套")
+    assert verdict.ok is True
+    parts = captured["body"]["messages"][0]["content"]
+    assert len([p for p in parts if p["type"] == "image_url"]) == 2
+    assert "藏蓝外套" in parts[-1]["text"]
