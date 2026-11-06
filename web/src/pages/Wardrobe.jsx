@@ -70,18 +70,16 @@ export default function Wardrobe({ onChanged }) {
         </p>
       </header>
 
-      <div className="-mx-5 overflow-hidden">
-        <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-1">
-          {FILTERS.map((item) => (
-            <button
-              key={item.key}
-              onClick={() => setFilter(item.key)}
-              className={`chip shrink-0 ${filter === item.key ? "chip-active" : ""}`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap gap-2">
+        {FILTERS.map((item) => (
+          <button
+            key={item.key}
+            onClick={() => setFilter(item.key)}
+            className={`chip ${filter === item.key ? "chip-active" : ""}`}
+          >
+            {item.label}
+          </button>
+        ))}
       </div>
 
       {error ? <p className="text-sm text-red-400">{error}</p> : null}

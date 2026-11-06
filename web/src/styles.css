@@ -53,14 +53,3 @@
 .safe-bottom {
   padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
 }
-
-/* 横向滚动的筛选条：能滑，但不要把滚动条画出来。
-   桌面浏览器会把这条画在筛选行下面，在手机界面上看就是一条很丑的横杠。 */
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
