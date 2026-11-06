@@ -13,11 +13,11 @@ from outfit.stylist.plan import build_plans
 NOW = datetime(2026, 12, 15, 8, 0, tzinfo=timezone.utc)
 
 
-def _check(plan, occasion, temp_c):
+def _check(plan, occasion, temp_c, formality=None):
     counts = Counter(g.category for g in plan.items)
     band = rules.temp_band(temp_c)
     lo_w, hi_w = rules.allowed_warmth(band)
-    lo_f, hi_f = rules.formality_range(occasion)
+    lo_f, hi_f = formality or rules.formality_range(occasion)
 
     # 需要的品类都在
     if counts["dress"]:
@@ -83,6 +83,26 @@ def test_plan_is_deterministic(wardrobe):
     assert [p.ids for p in first] == [p.ids for p in second]
 
 
+def test_interview_relaxes_formality_when_wardrobe_is_thin(wardrobe):
+    """衣橱里没有 4–5 分的上装，不应该直接放弃，应该退一步并说明。"""
+    plans, pool = build_plans(wardrobe, occasion="interview", temp_c=18.0, now=NOW)
+    assert plans, "放宽后应该能凑出方案"
+    assert pool.original_formality == (4, 5)
+    assert pool.formality[0] < 4, "放宽之后的区间应该更低"
+
+
+def test_no_relaxation_when_wardrobe_fits(wardrobe):
+    plans, pool = build_plans(wardrobe, occasion="work", temp_c=18.0, now=NOW)
+    assert plans
+    assert pool.original_formality is None, "本来够穿就不该放宽"
+
+
+def test_relaxation_never_touches_weather_rules(wardrobe):
+    plans, pool = build_plans(wardrobe, occasion="interview", temp_c=5.0, now=NOW)
+    for plan in plans:
+        assert all(g.warmth >= 4 for g in plan.items), "放宽正式度不能放宽厚薄"
+
+
 def test_empty_wardrobe_returns_no_plans():
     plans, pool = build_plans([], occasion="work", temp_c=18.0, now=NOW)
     assert plans == []
@@ -112,4 +132,4 @@ def test_all_occasions_produce_valid_plans(wardrobe, occasion):
         if not pool.is_usable():
             continue
         for plan in plans:
-            _check(plan, occasion, temp)
+            _check(plan, occasion, temp, formality=pool.formality)

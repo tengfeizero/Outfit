@@ -282,6 +282,9 @@ export default function Today({ status }) {
           {data.interpretation ? (
             <p className="text-xs text-brass">{data.interpretation}</p>
           ) : null}
+          {data.relaxed ? (
+            <p className="text-xs text-muted">补充：{data.relaxed}。</p>
+          ) : null}
 
           {data.plans.length === 0 ? (
             <div className="card p-5">

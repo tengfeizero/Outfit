@@ -126,6 +126,19 @@ def build_plans(
     now = now or datetime.now(timezone.utc)
     pool = candidates.build(garments, occasion=occasion, temp_c=temp_c, now=now)
 
+    # 凑不出就退一步：只放宽正式度（天气是物理事实，不能让），
+    # 并记下原来的区间，界面要说清楚"这是放宽后的结果"。
+    if not pool.is_usable():
+        original = pool.formality
+        wider = (max(1, original[0] - 1), min(5, original[1] + 1))
+        if wider != original:
+            relaxed_pool = candidates.build(
+                garments, occasion=occasion, temp_c=temp_c, now=now, formality=wider
+            )
+            if relaxed_pool.is_usable():
+                relaxed_pool.original_formality = original
+                pool = relaxed_pool
+
     if not pool.is_usable():
         return [], pool
 

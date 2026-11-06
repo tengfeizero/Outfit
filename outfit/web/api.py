@@ -426,12 +426,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
         band = rules.temp_band(request.temp_c)
+        relaxed = ""
+        if pool.original_formality:
+            a, b = pool.original_formality
+            c, d = pool.formality
+            relaxed = f"衣橱里没有 {a}–{b} 分的单品，退到 {c}–{d} 分来凑"
+
         return {
             "band": band,
             "band_label": rules.BAND_LABELS[band],
             "advice": rules.temperature_advice(band, request.temp_c),
             "occasion": reading.occasion,
             "interpretation": reading.explanation,
+            "relaxed": relaxed,
             "usable": pool.is_usable(),
             "reason": pool.explain(),
             "pool_counts": {

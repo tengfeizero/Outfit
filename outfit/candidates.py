@@ -31,6 +31,7 @@ class Pool:
     formality: tuple[int, int] = (2, 4)
     needs_jacket: bool = False
     relaxed: bool = False
+    original_formality: tuple[int, int] | None = None
     dropped: dict[str, int] = field(default_factory=dict)
 
     def all_items(self) -> list[Garment]:
@@ -65,7 +66,17 @@ class Pool:
             missing.append("鞋")
         if self.needs_jacket and not self.outers:
             missing.append("外套")
-        return "衣橱里缺少：" + "、".join(missing) + f"（{rules.BAND_LABELS[self.band]}天）"
+
+        lo, hi = self.formality
+        band_label = rules.BAND_LABELS[self.band]
+        warmth_lo, warmth_hi = rules.allowed_warmth(self.band)
+
+        text = "衣橱里缺少：" + "、".join(missing)
+        text += f"。这次要的是正式度 {lo}–{hi}、厚薄 {warmth_lo}–{warmth_hi} 的单品（{band_label}天）"
+        if self.dropped:
+            detail = "，".join(f"{reason} {count} 件" for reason, count in self.dropped.items())
+            text += f"；已筛掉：{detail}"
+        return text + "。"
 
 
 def _worn_within(garment: Garment, now: datetime, days: int) -> bool:
@@ -83,11 +94,12 @@ def build(
     occasion: str,
     temp_c: float,
     now: datetime | None = None,
+    formality: tuple[int, int] | None = None,
 ) -> Pool:
     now = now or datetime.now(timezone.utc)
     band = rules.temp_band(temp_c)
     lo_warmth, hi_warmth = rules.allowed_warmth(band)
-    f_lo, f_hi = rules.formality_range(occasion)
+    f_lo, f_hi = formality or rules.formality_range(occasion)
 
     pool = Pool(
         band=band,
