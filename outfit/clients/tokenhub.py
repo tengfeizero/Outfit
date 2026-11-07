@@ -164,8 +164,22 @@ class Tags:
         }
 
 
-def _data_url(image_bytes: bytes, mime: str = "image/jpeg") -> str:
-    return f"data:{mime};base64,{base64.b64encode(image_bytes).decode()}"
+def sniff_mime(data: bytes) -> str:
+    """按文件头判断图片类型。写死 image/jpeg 会把 PNG 冒充成 JPEG，接口会拒。"""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    return "image/jpeg"
+
+
+def _data_url(image_bytes: bytes, mime: str | None = None) -> str:
+    kind = mime or sniff_mime(image_bytes)
+    return f"data:{kind};base64,{base64.b64encode(image_bytes).decode()}"
 
 
 def _clamp(value: Any, low: int, high: int, default: int) -> int:
@@ -242,7 +256,6 @@ def build_try_on_messages(
     ]
     for image in garment_images:
         pieces.append({"type": "image_url", "image_url": {"url": _data_url(image)}})
-
     task = (
         f"把后面这些参考图里的衣服，穿到 @Image1 这个人的身上。要穿的是：{description}。"
         "严格保持这个人的脸、发型、体型和站姿不变，不要美化、不要换脸、不要改变身高比例。"
@@ -414,7 +427,7 @@ class TokenHub:
 
     # ------------------------------------------------------------ 打标
 
-    def tag_garment(self, image_bytes: bytes, mime: str = "image/jpeg") -> Tags:
+    def tag_garment(self, image_bytes: bytes, mime: str | None = None) -> Tags:
         payload = {
             "model": self.vision_model,
             "messages": [

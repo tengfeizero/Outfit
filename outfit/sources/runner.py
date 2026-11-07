@@ -85,6 +85,8 @@ def run(
     dry_run: bool = False,
     with_images: bool = True,
     with_cutout: bool = True,
+    with_tag: bool = False,
+    hub=None,
     client: httpx.Client | None = None,
 ) -> ImportReport:
     items = source.fetch(target, limit=limit)
@@ -118,6 +120,7 @@ def run(
             continue
 
         photo_path = None
+        tag_note: str | None = None
         if with_images and item.image_urls:
             image_dir.mkdir(parents=True, exist_ok=True)
             safe_color = (fields["color_primary"] or "x").replace("/", "-")
@@ -142,10 +145,40 @@ def run(
                     cutout_relative = str(cutout.relative_to(settings.data_dir)).replace("\\", "/")
                 if not fields.get("color_hex") and result.color_hex:
                     fields["color_hex"] = result.color_hex
+                # 站点没给色名时，本地也能把色值翻译成中文——不用模型
+                if fields["color_primary"] in (None, "", "未标注") and fields.get("color_hex"):
+                    fields["color_primary"] = capture.nearest_color_name(fields["color_hex"])
+
+            # 站点没给品类/颜色时，让视觉模型看一眼——每件约一分钱
+            if with_tag and hub is not None and getattr(hub, "available", False):
+                try:
+                    tags = hub.tag_garment(photo_path.read_bytes())
+                except Exception as error:  # noqa: BLE001 — 打标失败不该阻断入库
+                    tags = None
+                    tag_note = f"打标失败：{type(error).__name__}: {error}"
+                if tags is not None:
+                    fields["category"] = tags.category
+                    fields["warmth"] = tags.warmth
+                    fields["formality"] = tags.formality
+                    if not fields.get("color_hex"):
+                        from ..capture import PALETTE
+
+                        fields["color_hex"] = PALETTE.get(tags.color_name)
+                    if fields["color_primary"] in (None, "", "未标注"):
+                        fields["color_primary"] = tags.color_name
+                    if item.extra.get("from_filename"):
+                        from ..wardrobe import guess_name
+
+                        fields["name"] = guess_name(tags.category, tags.color_name)
+
+            # 文件名当标题的（本地存图），用"颜色+品类"起个能读的名字
+            if item.extra.get("from_filename"):
+                from ..wardrobe import guess_name
+
+                fields["name"] = guess_name(fields["category"], fields["color_primary"])
 
         garment = Garment(
-            name=fields["name"],
-            category=fields["category"],
+            name=fields["name"],            category=fields["category"],
             color_primary=fields["color_primary"],
             color_hex=fields.get("color_hex"),
             warmth=fields["warmth"],
@@ -165,7 +198,7 @@ def run(
         except Exception as error:  # noqa: BLE001
             report.add("failed", item, error=f"{type(error).__name__}: {error}")
             continue
-        report.add("created", item, garment_id=saved.id, image=relative)
+        report.add("created", item, garment_id=saved.id, image=relative, preview=fields, tag_error=tag_note)
 
     if not dry_run and report.run_dir is not None:
         (report.run_dir / "report.json").write_text(

@@ -45,6 +45,8 @@ class LocalSource:
                     price=meta.get("price"),
                     image_urls=[str(path)],
                     product_url=meta.get("url"),
+                    # 文件名当标题说明没有真标题，入库时可以用模型起个名字
+                    extra={"from_filename": "title" not in meta},
                 )
             )
             if limit and len(items) >= limit:

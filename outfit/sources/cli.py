@@ -45,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     imp.add_argument("--from-file", type=Path, help="从存好的 JSON 响应导入，不联网")
     imp.add_argument("--no-images", action="store_true", help="不下载图片")
     imp.add_argument("--no-cutout", action="store_true", help="下载图但不抠图（快很多）")
+    imp.add_argument("--tag", action="store_true", help="让视觉模型认品类和颜色（约 ¥0.01/件）")
     return parser
 
 
@@ -66,9 +67,20 @@ def main(argv: list[str] | None = None) -> int:
 
     source = get_source(args.source, endpoint=args.endpoint, from_file=args.from_file)
 
+    hub = None
+    if args.tag:
+        from ..clients.tokenhub import TokenHub
+
+        hub = TokenHub(settings.tokenhub_key, settings.tokenhub_base, text_model=settings.text_model)
+        if not hub.available:
+            print("要 --tag 得先配 TOKENHUB_API_KEY（见 .env.example）。", file=sys.stderr)
+            return 1
+
     print(f"采集源：{args.source}    目标：{args.target}")
     if args.dry_run:
         print("（dry-run：不写库、不下载图片）")
+    if args.tag:
+        print(f"（会用视觉模型认品类和颜色，约 ¥0.01/件，最多 {args.limit} 件）")
     print()
 
     try:
@@ -80,6 +92,8 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
             with_images=not args.no_images,
             with_cutout=not args.no_cutout,
+            with_tag=args.tag,
+            hub=hub,
         )
     except SourceError as error:
         print(f"\n采集失败：\n{error}", file=sys.stderr)
@@ -92,7 +106,10 @@ def main(argv: list[str] | None = None) -> int:
             color = preview.get("color_primary", "")
             price = preview.get("price_cny")
             money = f" ¥{price:.0f}" if price else ""
-            print(f"  + {detail['title']}  [{label} · {color}]{money}")
+            shown = preview.get("name") or detail["title"]
+            print(f"  + {shown}  [{label} · {color}]{money}")
+            if detail.get("tag_error"):
+                print(f"    ! {detail['tag_error']}")
         elif detail["status"] == "updated":
             print(f"  = {detail['title']}（已存在，更新价格/链接）")
         elif detail["status"] == "failed":
