@@ -3,9 +3,11 @@
 装在自己笔记本上的穿搭助手：告诉它身高体重和衣橱，它按场合和天气给三套方案。
 照片只存在本机，手机连同一个 Wi-Fi 就能用。
 
-设计文档：[docs/superpowers/specs/2026-11-06-ai-outfit-agent-design.md](docs/superpowers/specs/2026-11-06-ai-outfit-agent-design.md)
-实现计划：[docs/superpowers/plans/2026-11-06-outfit-implementation-plan.md](docs/superpowers/plans/2026-11-06-outfit-implementation-plan.md)
-**架构与选型**：[docs/architecture.md](docs/architecture.md) —— 循环怎么跑、失败怎么兜、以及"为什么不用 agent 框架"
+- 设计文档：[docs/superpowers/specs/2026-11-06-ai-outfit-agent-design.md](docs/superpowers/specs/2026-11-06-ai-outfit-agent-design.md)
+
+- 实现计划：[docs/superpowers/plans/2026-11-06-outfit-implementation-plan.md](docs/superpowers/plans/2026-11-06-outfit-implementation-plan.md)
+
+- 架构与选型：[docs/architecture.md](docs/architecture.md) —— 循环怎么跑、失败怎么兜、以及"为什么不用 agent 框架"
 
 ## 它是 agent 吗
 
