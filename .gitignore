@@ -16,3 +16,5 @@ data/
 # system
 Thumbs.db
 .DS_Store
+
+pytest-of-*/
