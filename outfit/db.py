@@ -37,7 +37,27 @@ def init_engine(db_path: Path | str):
         cursor.close()
 
     SQLModel.metadata.create_all(_engine)
+    _ensure_columns(_engine)
     return _engine
+
+
+# 新加的列。SQLite 的 create_all 不会改已有表，只能自己补。
+_EXTRA_COLUMNS = (
+    ("source", "TEXT"),
+    ("source_url", "TEXT"),
+    ("external_id", "TEXT"),
+    ("price_cny", "REAL"),
+    ("imported_at", "TIMESTAMP"),
+)
+
+
+def _ensure_columns(engine) -> None:
+    with engine.connect() as connection:
+        existing = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(garment)")}
+        for name, ddl in _EXTRA_COLUMNS:
+            if name not in existing:
+                connection.exec_driver_sql(f"ALTER TABLE garment ADD COLUMN {name} {ddl}")
+        connection.commit()
 
 
 def get_engine():
@@ -111,6 +131,17 @@ def list_garments(status: str | None = "active") -> list[Garment]:
         if status:
             statement = statement.where(Garment.status == status)
         return list(s.exec(statement.order_by(Garment.category, Garment.id)).all())
+
+
+def find_external(source: str, external_id: str, color: str | None = None) -> Garment | None:
+    """同一个站点、同一件商品、同一个颜色，只该有一行。采集靠它做幂等。"""
+    with session() as s:
+        statement = select(Garment).where(
+            Garment.source == source, Garment.external_id == external_id
+        )
+        if color:
+            statement = statement.where(Garment.color_primary == color)
+        return s.exec(statement).first()
 
 
 def delete_garment(garment_id: int) -> bool:

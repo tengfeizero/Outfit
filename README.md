@@ -73,7 +73,44 @@ TOKENHUB_API_KEY=sk-...
 
 打标用的是 `hy-vision-2.0-instruct`，出图用的是 `hy-image-v3.5-preview`。两者都在 `outfit/clients/tokenhub.py` 一个文件里，换供应商只改这个文件。
 
-## 改前端
+## 从电商站点导入
+
+```bat
+.venv\Scripts\python.exe -m outfit.sources list
+.venv\Scripts\python.exe -m outfit.sources import uniqlo "https://www.uniqlo.cn/c/2mouterwr.html" --limit 20 --dry-run
+.venv\Scripts\python.exe -m outfit.sources import local "D:\我的图片\外套"
+```
+
+`--dry-run` 只打印"会导入什么"，不写库、不下载图。确认没问题再去掉它。
+
+**站点接口改版时**（优衣库这种站点改得很勤）：
+
+```bat
+:: 1) 浏览器 F12 → Network → XHR，找到返回商品列表那条，复制 URL
+.venv\Scripts\python.exe -m outfit.sources import uniqlo <分类页URL> --endpoint "<那条XHR的URL>"
+
+:: 2) 或者把那条请求的响应存成 json，离线导入
+.venv\Scripts\python.exe -m outfit.sources import uniqlo <分类页URL> --from-file data\响应.json
+```
+
+**加一个新站点**：在 `outfit/sources/` 下新建一个文件，写一个 `fetch()` 把站点翻译成 `RawItem`，然后在 `SOURCES` 里注册。映射（品类/颜色/厚薄/正式度）、去重、下载、留档全都不用动。
+
+**目录结构**
+
+```
+outfit/sources/
+  base.py      RawItem / Source 协议 / 两种错误
+  mapping.py   英文色名、品类关键词 → 我们的字段
+  uniqlo.py    一个站一个文件
+  local.py     本地文件夹（接口挂了也能入库）
+  runner.py    去重、下载、落库、出报告
+  cli.py       命令行
+data/
+  imports/<源>/<时间>/items.json + report.json   ← 每次导入都留档，可复现
+  photos/<源>/<商品ID>-<颜色>.jpg
+```
+
+导入是幂等的：同一站点 + 同一商品 ID + 同一颜色，只会有一行，重复导入走"更新价格/链接"。
 
 ```bat
 cd web
