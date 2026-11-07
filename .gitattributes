@@ -1,0 +1,26 @@
+# 换行符规则：让任何系统克隆下来都能直接跑
+#
+# 背景：启动.bat 必须是 CRLF。纯 LF 的批处理会让 cmd 把 if (...) 整块当成一行，
+# 双击后窗口一闪就没了——这个坑踩过一次，用 .gitattributes 钉死，不再依赖各人的 git 配置。
+
+* text=auto eol=lf
+
+# Windows 批处理：检出时必须是 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制：不要做任何换行转换，否则文件会损坏
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.onnx binary
+*.pdf binary
+*.xlsx binary
+*.docx binary
+
+# 锁文件不参与 diff，避免 review 时被噪音淹没
+package-lock.json -diff linguist-generated

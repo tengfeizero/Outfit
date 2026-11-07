@@ -73,6 +73,44 @@ TOKENHUB_API_KEY=sk-...
 
 打标用的是 `hy-vision-2.0-instruct`，出图用的是 `hy-image-v3.5-preview`。两者都在 `outfit/clients/tokenhub.py` 一个文件里，换供应商只改这个文件。
 
+## 换一台机器接着开发
+
+仓库里**只有代码**：照片、数据库、模型文件、密钥都不在（见 `.gitignore`）。所以新机器上：
+
+```bat
+git clone <你的仓库地址>
+cd Outfit
+
+:: 1. 建环境（Python 3.10+）
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+:: 2. 配密钥（没有也能跑，只是不能自动打标和出图）
+copy .env.example .env
+:: 打开 .env 填 TOKENHUB_API_KEY
+
+:: 3. 灌一套演示衣橱（数据库是空的）
+.venv\Scripts\python.exe -m outfit.demo --reseed
+
+:: 4. 验证环境
+.venv\Scripts\python.exe -m pytest tests -q
+
+:: 5. 启动
+双击 启动.bat
+```
+
+**前端不用装 Node**：`outfit/web/static/` 里的构建产物跟着仓库走，直接能用。只有要改前端时才需要：
+
+```bat
+cd web
+npm install
+npm run build
+```
+
+**要带走的私有数据**（旧机器上）就三样：`data/`（衣橱和照片）、`.env`（密钥）、可选 `data/models/u2net.onnx`（168MB 抠图模型，不带的话第一次抠图会自动下载）。
+
+---
+
 ## 改前端
 
 ```bat
