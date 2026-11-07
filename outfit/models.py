@@ -71,13 +71,6 @@ class Garment(SQLModel, table=True):
     brand: str | None = None
     size: str | None = None
 
-    # 来源与溯源：从外部站点采集时才有值，手输的留空
-    source: str | None = None
-    source_url: str | None = None
-    external_id: str | None = None
-    price_cny: float | None = None
-    imported_at: datetime | None = None
-
     image_path: str | None = None
     cutout_path: str | None = None
     label_confidence: float = 1.0
